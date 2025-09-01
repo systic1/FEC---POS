@@ -1,14 +1,16 @@
 
 
+
 import React, { useState, useCallback } from 'react';
 import { Customer, Sale } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
 import Dashboard from './components/Dashboard';
 import PointOfSale from './components/PointOfSale';
 import CustomerManagement from './components/CustomerManagement';
+import History from './components/History';
 import { MOCK_CUSTOMERS } from './constants';
 
-type View = 'dashboard' | 'sale' | 'customers';
+type View = 'dashboard' | 'sale' | 'history' | 'customers';
 
 const App: React.FC = () => {
   const [customers, setCustomers] = useLocalStorage<Customer[]>('customers', MOCK_CUSTOMERS);
@@ -35,6 +37,7 @@ const App: React.FC = () => {
     const navItems: { id: View; label: string; icon: JSX.Element }[] = [
       { id: 'dashboard', label: 'Search', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> },
       { id: 'sale', label: 'Entry', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg> },
+      { id: 'history', label: 'History', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
       { id: 'customers', label: 'Membership', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg> },
     ];
   
@@ -70,6 +73,8 @@ const App: React.FC = () => {
         return <Dashboard sales={sales} customers={customers} />;
       case 'sale':
         return <PointOfSale sales={sales} customers={customers} addSale={addSale} addOrUpdateCustomer={addOrUpdateCustomer} />;
+      case 'history':
+        return <History sales={sales} />;
       case 'customers':
         return <CustomerManagement customers={customers} addOrUpdateCustomer={addOrUpdateCustomer}/>;
       default:

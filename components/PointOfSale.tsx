@@ -24,10 +24,9 @@ const ProductCard: React.FC<{ product: Product; onClick: () => void; disabled: b
     <button 
         onClick={onClick} 
         disabled={disabled}
-        className={`bg-white rounded-lg shadow-sm border-t-4 p-3 text-center flex flex-col items-center justify-between transition-transform transform hover:scale-105 disabled:opacity-50 disabled:transform-none disabled:cursor-not-allowed`}
-        style={{ borderColor: product.color }}
+        className={`bg-white rounded-lg shadow-sm border-t-4 p-3 text-center flex flex-col items-center justify-between transition-transform transform hover:scale-105 disabled:opacity-50 disabled:transform-none disabled:cursor-not-allowed border-${product.color}`}
     >
-        <product.image className="w-12 h-12 mb-2" style={{ color: product.color }} />
+        <product.image className={`w-12 h-12 mb-2 text-${product.color}`} />
         <span className="font-semibold text-gray-700 text-sm">{product.name}</span>
         <span className="text-gray-500 text-xs mt-1">₹{product.price > 0 ? product.price : 'N/A'}</span>
     </button>

@@ -30,6 +30,25 @@
   }
 }
 </script>
+<style>
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+        #receipt-to-print, #receipt-to-print * {
+          visibility: visible;
+        }
+        #receipt-to-print {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+        }
+      }
+    </style>
 </head>
   <body class="bg-slate-50 font-sans">
     <div id="root"></div>

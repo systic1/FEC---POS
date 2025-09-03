@@ -49,6 +49,9 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
   const [aiSuggestion, setAiSuggestion] = useState('');
   const [isSuggestionLoading, setSuggestionLoading] = useState(false);
 
+  const [isApplyingDiscount, setIsApplyingDiscount] = useState(false);
+  const [discountInput, setDiscountInput] = useState({ type: 'fixed', value: '' });
+
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000); // Update time every minute
     return () => clearInterval(timer);
@@ -152,7 +155,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
     } else {
         // If the current active transaction is empty, just reuse it for the new customer.
         if (activeTransaction && activeTransaction.cart.length === 0) {
-            updateActiveTransaction({ phone: primaryPhone, guests: groupGuests, cart: [] });
+            updateActiveTransaction({ phone: primaryPhone, guests: groupGuests, cart: [], discount: { type: 'fixed', value: 0 } });
             setSearchMessage({type: 'info', text: `Transaction started for group.`});
         } else {
             // Create a new transaction
@@ -162,6 +165,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
                 phone: primaryPhone,
                 guests: groupGuests,
                 cart: [],
+                discount: { type: 'fixed', value: 0 },
             };
             setTransactions(prev => [...prev, newTransaction]);
             setActiveTransactionId(newTransactionId);
@@ -226,11 +230,32 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
       updateActiveTransaction({ cart: newCart });
     }
   };
-
-  const total = useMemo(() => {
-    return activeTransaction?.cart.reduce((sum, item) => sum + item.price, 0) || 0;
-  }, [activeTransaction]);
   
+  const { subtotal, discountAmount, gstAmount, grandTotal } = useMemo(() => {
+    if (!activeTransaction) {
+      return { subtotal: 0, discountAmount: 0, gstAmount: 0, grandTotal: 0 };
+    }
+    const sub = activeTransaction.cart.reduce((sum, item) => sum + item.price, 0);
+    let discAmount = 0;
+    if (activeTransaction.discount.type === 'percentage') {
+      discAmount = sub * (activeTransaction.discount.value / 100);
+    } else {
+      discAmount = activeTransaction.discount.value;
+    }
+    discAmount = Math.min(sub, discAmount); // Discount can't be more than subtotal
+
+    const totalAfterDiscount = sub - discAmount;
+    const gst = totalAfterDiscount * 0.18; // 18% GST
+    const total = totalAfterDiscount + gst;
+
+    return {
+      subtotal: sub,
+      discountAmount: discAmount,
+      gstAmount: gst,
+      grandTotal: total,
+    };
+  }, [activeTransaction]);
+
   const handleBulkAssignWaiver = (assignments: { [key: number]: string }) => {
     if (!activeTransaction) return;
     const newCart = [...activeTransaction.cart];
@@ -279,7 +304,10 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
         customerId: primarySaleGuest.id, // Primary guest from the active ones
         customerName: `${primarySaleGuest.name}${saleGuests.length > 1 ? ` + ${saleGuests.length - 1}` : ''}`,
         items: activeTransaction.cart,
-        total,
+        subtotal,
+        discountAmount,
+        gstAmount,
+        total: grandTotal,
         date: new Date().toISOString(),
         paymentMethod
     };
@@ -287,6 +315,27 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
     setCheckoutModalOpen(false);
     resetAfterSale();
   }
+  
+  const handleApplyDiscount = () => {
+    const value = parseFloat(discountInput.value);
+    if (!isNaN(value) && value >= 0) {
+        updateActiveTransaction({
+            discount: {
+                type: discountInput.type as 'fixed' | 'percentage',
+                value: value,
+            },
+        });
+        setIsApplyingDiscount(false);
+        setDiscountInput({ type: 'fixed', value: '' });
+    }
+  };
+
+  const handleRemoveDiscount = () => {
+      updateActiveTransaction({
+          discount: { type: 'fixed', value: 0 },
+      });
+      setIsApplyingDiscount(false);
+  };
 
   const canCheckout = useMemo(() => {
     if (!activeTransaction || activeTransaction.cart.length === 0 || activeTransaction.guests.length === 0) return false;
@@ -529,9 +578,52 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
             )}
         </div>
         <div className="p-4 border-t bg-white">
-            <div className="flex justify-between font-bold text-lg mb-4">
+            {activeTransaction && activeTransaction.cart.length > 0 && (
+              <div className="space-y-1 text-sm mb-3">
+                <div className="flex justify-between">
+                    <span className="text-gray-600">Subtotal</span>
+                    <span>₹{subtotal.toFixed(2)}</span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Discount</span>
+                    {activeTransaction.discount.value > 0 ? (
+                        <div className="flex items-center gap-2">
+                            <span className="font-semibold text-red-600">-₹{discountAmount.toFixed(2)}</span>
+                            <button onClick={handleRemoveDiscount} className="text-xs text-red-500 hover:underline">[Remove]</button>
+                        </div>
+                    ) : (
+                        <button onClick={() => setIsApplyingDiscount(!isApplyingDiscount)} className="text-xs text-blue-600 hover:underline">Add Discount</button>
+                    )}
+                </div>
+                
+                {isApplyingDiscount && (
+                    <div className="p-2 bg-gray-100 rounded-md my-1 space-y-2">
+                        <div className="flex gap-2">
+                            <input type="number" placeholder="Value" value={discountInput.value} onChange={(e) => setDiscountInput(p => ({...p, value: e.target.value}))} className="w-full px-3 py-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                            <select value={discountInput.type} onChange={(e) => setDiscountInput(p => ({...p, type: e.target.value as 'fixed'|'percentage'}))} className="border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <option value="fixed">₹</option>
+                                <option value="percentage">%</option>
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <Button size="sm" variant="secondary" onClick={() => { setIsApplyingDiscount(false); setDiscountInput({type:'fixed', value:''})}}>Cancel</Button>
+                            <Button size="sm" onClick={handleApplyDiscount}>Apply</Button>
+                        </div>
+                    </div>
+                )}
+
+
+                <div className="flex justify-between">
+                    <span className="text-gray-600">GST (18%)</span>
+                    <span>+₹{gstAmount.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-between font-bold text-lg mb-4 border-t pt-2">
                 <span>Total</span>
-                <span>₹{total}</span>
+                <span>₹{grandTotal.toFixed(2)}</span>
             </div>
             <Button className="w-full" onClick={handleCheckout} disabled={!canCheckout}>
                Pay
@@ -560,10 +652,38 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
       />
 
 
-      <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Complete Payment">
-        <div className="space-y-4">
-            <p>Paying for: <span className="font-semibold">{activeGuestsInCart.length > 0 ? activeGuestsInCart[0].name : 'Customer'}{activeGuestsInCart.length > 1 ? ` + ${activeGuestsInCart.length - 1}` : ''}</span></p>
-            <p className="text-3xl font-bold">Total Amount: ₹{total}</p>
+      <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Final Bill">
+        <div className="space-y-6">
+            <div id="receipt-to-print" className="font-mono bg-white p-4 border-2 border-dashed border-gray-400 rounded-lg">
+                <div className="text-center">
+                    <h3 className="font-bold text-lg">Jump India Fun Zone</h3>
+                    <p className="text-xs">Tax Invoice</p>
+                    <p className="text-xs">{new Date().toLocaleString()}</p>
+                </div>
+                <hr className="my-2 border-dashed" />
+                <div className="text-xs">
+                    <div className="flex font-bold">
+                        <span className="flex-grow">Item</span>
+                        <span className="w-8 text-center">Qty</span>
+                        <span className="w-16 text-right">Price</span>
+                    </div>
+                    {groupedCart.map(group => (
+                        <div key={group.item.id} className="flex">
+                            <span className="flex-grow truncate">{group.item.name}</span>
+                            <span className="w-8 text-center">{group.quantity}</span>
+                            <span className="w-16 text-right">₹{(group.item.price * group.quantity).toFixed(2)}</span>
+                        </div>
+                    ))}
+                </div>
+                <hr className="my-2 border-dashed" />
+                <div className="space-y-1 text-sm">
+                    <div className="flex justify-between"><span>Subtotal:</span><span>₹{subtotal.toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span>Discount:</span><span>-₹{discountAmount.toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span>GST @ 18%:</span><span>+₹{gstAmount.toFixed(2)}</span></div>
+                    <div className="flex justify-between font-bold text-base border-t border-dashed pt-1 mt-1"><span>GRAND TOTAL:</span><span>₹{grandTotal.toFixed(2)}</span></div>
+                </div>
+                <p className="text-center text-xs mt-4">Thank you for visiting!</p>
+            </div>
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
                 <div className="flex gap-4">
@@ -574,9 +694,17 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
                     ))}
                 </div>
             </div>
-            <div className="pt-4 flex justify-end gap-3">
-                <Button variant="secondary" onClick={() => setCheckoutModalOpen(false)}>Cancel</Button>
-                <Button variant="success" onClick={handleProcessPayment}>Confirm Payment</Button>
+            <div className="pt-4 flex justify-between items-center">
+                <Button variant="secondary" onClick={() => window.print()} className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v6a2 2 0 002 2h12a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm-1 9a1 1 0 01-1 1H9a1 1 0 110-2h4a1 1 0 011 1zm3-4a1 1 0 00-1-1h-6a1 1 0 100 2h6a1 1 0 001-1z" clipRule="evenodd" />
+                    </svg>
+                    Print Receipt
+                </Button>
+                <div className="flex gap-3">
+                    <Button variant="secondary" onClick={() => setCheckoutModalOpen(false)}>Cancel</Button>
+                    <Button variant="success" onClick={handleProcessPayment}>Confirm Payment</Button>
+                </div>
             </div>
         </div>
       </Modal>

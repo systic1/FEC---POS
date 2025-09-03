@@ -41,6 +41,9 @@ export interface Sale {
   customerId: string;
   customerName: string;
   items: CartItem[];
+  subtotal: number;
+  discountAmount: number;
+  gstAmount: number;
   total: number;
   date: string;
   paymentMethod: 'Cash' | 'Card' | 'UPI';
@@ -51,4 +54,5 @@ export interface Transaction {
   phone: string;
   guests: Customer[];
   cart: CartItem[];
+  discount: { type: 'percentage' | 'fixed'; value: number };
 }

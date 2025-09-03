@@ -7,6 +7,8 @@ export interface Customer {
   waiverSignedOn: string | null;
   waiverSignature: string | null; // base64 data URL
   guardianName: string | null;
+  groupId?: string;
+  groupWaiverDate?: string;
 }
 
 export interface Product {

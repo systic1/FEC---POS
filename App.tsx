@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useCallback } from 'react';
 import { Customer, Sale } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
@@ -35,7 +36,7 @@ const App: React.FC = () => {
 
   const Sidebar: React.FC<{ setView: (view: View) => void; currentView: View }> = ({ setView, currentView }) => {
     const navItems: { id: View; label: string; icon: JSX.Element }[] = [
-      { id: 'dashboard', label: 'Search', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> },
+      { id: 'dashboard', label: 'Dashboard', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> },
       { id: 'sale', label: 'Entry', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg> },
       { id: 'history', label: 'History', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
       { id: 'customers', label: 'Membership', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg> },
@@ -50,8 +51,7 @@ const App: React.FC = () => {
               <li key={item.id}>
                 <button
                   onClick={() => setView(item.id)}
-                  disabled={item.id === 'dashboard'}
-                  className={`w-full flex flex-col items-center justify-center py-3 transition-colors duration-200 relative ${currentView === item.id ? 'text-white' : 'hover:bg-gray-800 hover:text-white'} disabled:opacity-50 disabled:hover:bg-transparent`}
+                  className={`w-full flex flex-col items-center justify-center py-3 transition-colors duration-200 relative ${currentView === item.id ? 'text-white' : 'hover:bg-gray-800 hover:text-white'} disabled:opacity-50`}
                 >
                   {currentView === item.id && <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 rounded-r-full"></div>}
                   <div className={`p-2 rounded-lg ${currentView === item.id ? 'bg-emerald-500' : ''}`}>

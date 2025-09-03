@@ -104,40 +104,68 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
   const handleCustomerSearch = () => {
     if (!customerSearch.trim()) return;
     setSearchMessage(null);
-    const searchTerm = customerSearch.toLowerCase().trim();
+    const searchTerm = customerSearch.trim();
     
-    const foundCustomer = customers.find(c => c.phone === searchTerm || c.name.toLowerCase().includes(searchTerm));
+    let groupGuests: Customer[] = [];
+    let groupPhone: string | null = null;
+    
+    // Search by Group ID first
+    if (searchTerm.toUpperCase().startsWith('JMP-')) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        groupGuests = customers.filter(c => c.groupId === searchTerm.toUpperCase() && c.groupWaiverDate && new Date(c.groupWaiverDate) >= today);
+        if (groupGuests.length > 0) {
+            groupPhone = groupGuests[0].phone; // Use first member's phone for display
+        }
+    } else {
+        // Search by phone or name
+        const foundCustomer = customers.find(c => c.phone === searchTerm || c.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        if (foundCustomer) {
+            // Check if this customer is part of a recent group waiver
+            if (foundCustomer.groupId && foundCustomer.groupWaiverDate) {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                if (new Date(foundCustomer.groupWaiverDate) >= today) {
+                    groupGuests = customers.filter(c => c.groupId === foundCustomer.groupId);
+                    groupPhone = foundCustomer.phone;
+                }
+            }
+            // If not in a recent group, just load this customer and their phone-linked family
+            if (groupGuests.length === 0) {
+                groupGuests = customers.filter(c => c.phone === foundCustomer.phone);
+                groupPhone = foundCustomer.phone;
+            }
+        }
+    }
 
-    if (!foundCustomer) {
-        setSearchMessage({type: 'error', text: 'Customer not found. Please ask them to sign the waiver.'});
+    if (groupGuests.length === 0) {
+        setSearchMessage({type: 'error', text: 'Customer or group not found. Please ask them to sign the waiver.'});
         return;
     }
 
-    const phone = foundCustomer.phone;
-    const existingTransaction = transactions.find(t => t.phone.split(' & ').includes(phone));
+    const primaryPhone = groupPhone!;
+    const existingTransaction = transactions.find(t => t.phone.split(' & ').includes(primaryPhone));
 
     if (existingTransaction) {
         setActiveTransactionId(existingTransaction.id);
-        setSearchMessage({type: 'info', text: `Switched to existing transaction for ${phone}.`});
+        setSearchMessage({type: 'info', text: `Switched to existing transaction for ${primaryPhone}.`});
     } else {
         // If the current active transaction is empty, just reuse it for the new customer.
         if (activeTransaction && activeTransaction.cart.length === 0) {
-            const allMembers = customers.filter(c => c.phone === phone);
-            updateActiveTransaction({ phone, guests: allMembers, cart: [] });
-            setSearchMessage({type: 'info', text: `Transaction started for ${phone}.`});
+            updateActiveTransaction({ phone: primaryPhone, guests: groupGuests, cart: [] });
+            setSearchMessage({type: 'info', text: `Transaction started for group.`});
         } else {
             // Create a new transaction
             const newTransactionId = `trans_${new Date().getTime()}`;
-            const allMembers = customers.filter(c => c.phone === phone);
             const newTransaction: Transaction = {
                 id: newTransactionId,
-                phone: phone,
-                guests: allMembers,
+                phone: primaryPhone,
+                guests: groupGuests,
                 cart: [],
             };
             setTransactions(prev => [...prev, newTransaction]);
             setActiveTransactionId(newTransactionId);
-            setSearchMessage({type: 'info', text: `Current order saved. New transaction started for ${phone}.`});
+            setSearchMessage({type: 'info', text: `Current order saved. New transaction started for group.`});
         }
     }
     setCustomerSearch('');
@@ -364,7 +392,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
              <Input 
                 label="" 
                 id="search-customer" 
-                placeholder="Find or start transaction by name/phone..." 
+                placeholder="Find group by Group Code, phone, or name..." 
                 type="search" 
                 value={customerSearch}
                 onChange={e => { setCustomerSearch(e.target.value); setSearchMessage(null); }}
@@ -430,8 +458,8 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
                             </div>
                             {otherGuests.length > 0 && (
                                 <div>
-                                    <span className="font-medium text-gray-500">Other Guests:</span>
-                                    <span className="text-gray-700 ml-2">{otherGuests.map(g => g.name).join(', ')}</span>
+                                    <span className="font-medium text-gray-500">Other Guests ({otherGuests.length}):</span>
+                                    <span className="text-gray-700 ml-2 text-right block truncate">{otherGuests.map(g => g.name).join(', ')}</span>
                                 </div>
                             )}
                         </div>

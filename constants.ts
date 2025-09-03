@@ -59,6 +59,8 @@ export const ADD_ONS: AddOn[] = [
 // A simple placeholder for a signature image (1x1 transparent pixel)
 const MOCK_SIGNATURE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
+const today = new Date().toISOString();
+
 export const MOCK_CUSTOMERS: Customer[] = [
   {
     id: 'cust_1',
@@ -66,7 +68,7 @@ export const MOCK_CUSTOMERS: Customer[] = [
     dob: '1995-05-20', // Adult
     email: 'aarav.sharma@example.com',
     phone: '9876543210',
-    waiverSignedOn: new Date().toISOString(),
+    waiverSignedOn: today,
     waiverSignature: MOCK_SIGNATURE,
     guardianName: null,
   },
@@ -76,7 +78,7 @@ export const MOCK_CUSTOMERS: Customer[] = [
     dob: '2015-11-10', // Minor
     email: 'priya.patel@example.com',
     phone: '9876543211',
-    waiverSignedOn: new Date().toISOString(),
+    waiverSignedOn: today,
     waiverSignature: MOCK_SIGNATURE,
     guardianName: 'Rajesh Patel',
   },
@@ -96,7 +98,7 @@ export const MOCK_CUSTOMERS: Customer[] = [
     dob: '2003-09-01', // Adult
     email: 'saanvi.gupta@example.com',
     phone: '1234567890',
-    waiverSignedOn: new Date().toISOString(),
+    waiverSignedOn: today,
     waiverSignature: MOCK_SIGNATURE,
     guardianName: null,
   },
@@ -117,9 +119,11 @@ export const MOCK_CUSTOMERS: Customer[] = [
     dob: '1985-08-15', // Adult Guardian
     email: 'anjali.verma@example.com',
     phone: '8888888888',
-    waiverSignedOn: new Date().toISOString(),
+    waiverSignedOn: today,
     waiverSignature: MOCK_SIGNATURE,
     guardianName: null,
+    groupId: 'JMP-VERMA',
+    groupWaiverDate: today,
   },
   {
     id: 'cust_7',
@@ -127,9 +131,11 @@ export const MOCK_CUSTOMERS: Customer[] = [
     dob: '2014-03-25', // Minor
     email: 'anjali.verma@example.com',
     phone: '8888888888',
-    waiverSignedOn: new Date().toISOString(),
+    waiverSignedOn: today,
     waiverSignature: MOCK_SIGNATURE,
     guardianName: 'Anjali Verma',
+    groupId: 'JMP-VERMA',
+    groupWaiverDate: today,
   },
   {
     id: 'cust_8',
@@ -137,9 +143,23 @@ export const MOCK_CUSTOMERS: Customer[] = [
     dob: '2016-07-01', // Minor
     email: 'anjali.verma@example.com',
     phone: '8888888888',
-    waiverSignedOn: new Date().toISOString(),
+    waiverSignedOn: today,
     waiverSignature: MOCK_SIGNATURE,
     guardianName: 'Anjali Verma',
+    groupId: 'JMP-VERMA',
+    groupWaiverDate: today,
+  },
+  {
+    id: 'cust_10',
+    name: 'Rahul Verma',
+    dob: '1984-10-10', // Adult
+    email: 'rahul.verma@example.com',
+    phone: '8888888889', // Unique phone number for another adult in the group
+    waiverSignedOn: today,
+    waiverSignature: MOCK_SIGNATURE,
+    guardianName: null,
+    groupId: 'JMP-VERMA', // Same group ID
+    groupWaiverDate: today,
   },
   // Expired waiver test case
   {

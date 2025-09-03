@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Customer, Sale, CartItem, Product, Transaction } from '../types';
 import { TICKET_TYPES, ADD_ONS } from '../constants';
@@ -58,6 +57,21 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
   const activeTransaction = useMemo(() => {
     return transactions.find(t => t.id === activeTransactionId) || null;
   }, [transactions, activeTransactionId]);
+
+  const activeGuestsInCart = useMemo(() => {
+    if (!activeTransaction) return [];
+    const assignedGuestIds = new Set(
+        activeTransaction.cart
+            .filter(item => item.type === 'ticket' && item.assignedGuestId)
+            .map(item => item.assignedGuestId!)
+    );
+    // If tickets are assigned, the active guests are those assigned.
+    if (assignedGuestIds.size > 0) {
+        return activeTransaction.guests.filter(g => assignedGuestIds.has(g.id));
+    }
+    // If no tickets assigned (e.g. only addons), default to the primary guest of the transaction.
+    return activeTransaction.guests.length > 0 ? [activeTransaction.guests[0]] : [];
+  }, [activeTransaction]);
 
   useEffect(() => {
     if (activeTransaction && activeTransaction.guests.length > 0) {
@@ -224,11 +238,18 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
   };
 
   const handleProcessPayment = () => {
-    if (!activeTransaction || activeTransaction.guests.length === 0) return;
+    if (!activeTransaction || !canCheckout) return;
+
+    const saleGuests = activeGuestsInCart.length > 0 ? activeGuestsInCart : (activeTransaction.guests.length > 0 ? [activeTransaction.guests[0]] : []);
+    
+    if (saleGuests.length === 0) return;
+
+    const primarySaleGuest = saleGuests[0];
+    
     const newSale: Sale = {
         id: `sale_${new Date().getTime()}`,
-        customerId: activeTransaction.guests[0].id, // Primary guest
-        customerName: `${activeTransaction.guests[0].name}${activeTransaction.guests.length > 1 ? ` & group` : ''}`,
+        customerId: primarySaleGuest.id, // Primary guest from the active ones
+        customerName: `${primarySaleGuest.name}${saleGuests.length > 1 ? ` + ${saleGuests.length - 1}` : ''}`,
         items: activeTransaction.cart,
         total,
         date: new Date().toISOString(),
@@ -419,7 +440,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
                     {/* AI Suggestion Card */}
                     <div className="p-3 bg-blue-50 border-l-4 border-blue-400 rounded-r-lg">
                         <h4 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="http://www.w3.org/2000/svg" fill="currentColor">
                               <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 011 1v1h1a1 1 0 110 2h-1v1a1 1 0 11-2 0V6h-1a1 1 0 110-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2h-1v1a1 1 0 11-2 0v-1h-1a1 1 0 110-2h1v-1a1 1 0 011-1z" clipRule="evenodd" />
                             </svg>
                             AI Assistant
@@ -513,7 +534,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
 
       <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Complete Payment">
         <div className="space-y-4">
-            <p>Paying for: <span className="font-semibold">{activeTransaction?.guests.map(g => g.name).join(', ')}</span></p>
+            <p>Paying for: <span className="font-semibold">{activeGuestsInCart.length > 0 ? activeGuestsInCart[0].name : 'Customer'}{activeGuestsInCart.length > 1 ? ` + ${activeGuestsInCart.length - 1}` : ''}</span></p>
             <p className="text-3xl font-bold">Total Amount: ₹{total}</p>
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>

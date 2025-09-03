@@ -114,16 +114,35 @@ const History: React.FC<HistoryProps> = ({ sales }) => {
                   <td colSpan={6} className="text-center py-10 text-gray-500">No sales recorded today.</td>
                 </tr>
               ) : (
-                sortedTodaySales.map(sale => (
-                  <tr key={sale.id} className="bg-white border-b hover:bg-gray-50">
-                    <td className="px-6 py-4">{new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                    <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">{sale.customerName}</td>
-                    <td className="px-6 py-4">{summarizeCart(sale.items)}</td>
-                    <td className="px-6 py-4 text-center">{countGuests(sale.items)}</td>
-                    <td className="px-6 py-4">{sale.paymentMethod}</td>
-                    <td className="px-6 py-4 text-right font-semibold">₹{sale.total.toLocaleString('en-IN')}</td>
-                  </tr>
-                ))
+                sortedTodaySales.map(sale => {
+                  const uniqueAssignedGuests = Array.from(new Set(
+                    sale.items
+                        .filter(item => item.type === 'ticket' && item.assignedGuestName)
+                        .map(item => item.assignedGuestName!)
+                  ));
+
+                  let customerDisplayName = sale.customerName.split(' +')[0].trim();
+                  const guestCountForDisplay = countGuests(sale.items);
+
+                  if (uniqueAssignedGuests.length > 0) {
+                      const primaryName = sale.customerName.split(' +')[0].trim();
+                      const primaryIsJumper = uniqueAssignedGuests.includes(primaryName);
+                      const displayNameToShow = primaryIsJumper ? primaryName : uniqueAssignedGuests[0];
+                      
+                      customerDisplayName = `${displayNameToShow}${uniqueAssignedGuests.length > 1 ? ` + ${uniqueAssignedGuests.length - 1}` : ''}`;
+                  }
+
+                  return (
+                    <tr key={sale.id} className="bg-white border-b hover:bg-gray-50">
+                      <td className="px-6 py-4">{new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                      <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">{customerDisplayName}</td>
+                      <td className="px-6 py-4">{summarizeCart(sale.items)}</td>
+                      <td className="px-6 py-4 text-center">{guestCountForDisplay}</td>
+                      <td className="px-6 py-4">{sale.paymentMethod}</td>
+                      <td className="px-6 py-4 text-right font-semibold">₹{sale.total.toLocaleString('en-IN')}</td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>

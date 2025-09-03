@@ -31,7 +31,7 @@ export interface CartItem {
     id: string;
     name:string;
     price: number;
-    type: 'ticket' | 'addon';
+    type: 'ticket' | 'addon' | 'membership';
     assignedGuestId: string | null;
     assignedGuestName: string | null;
 }

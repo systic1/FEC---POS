@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Customer, Sale, CartItem, Product, Transaction } from '../types';
-import { TICKET_TYPES, ADD_ONS } from '../constants';
+import { TICKET_TYPES, ADD_ONS, MEMBERSHIP_TYPES } from '../constants';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import Input from './ui/Input';
@@ -175,17 +175,17 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
     setCustomerSearch('');
   };
   
-  const addToCart = (item: Product, type: 'ticket' | 'addon') => {
+  const addToCart = (item: Product, type: 'ticket' | 'addon' | 'membership') => {
     if (!activeTransaction) return;
 
     let assignedGuestId: string | null = null;
     let assignedGuestName: string | null = null;
 
-    // Auto-assign logic for tickets
-    if (type === 'ticket') {
+    // Auto-assign logic for tickets & memberships
+    if (type === 'ticket' || type === 'membership') {
         const assignedGuestIds = new Set(
             activeTransaction.cart
-                .filter(cartItem => cartItem.type === 'ticket' && cartItem.assignedGuestId)
+                .filter(cartItem => (cartItem.type === 'ticket' || cartItem.type === 'membership') && cartItem.assignedGuestId)
                 .map(cartItem => cartItem.assignedGuestId!)
         );
         
@@ -214,9 +214,14 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
   
   const handleAddOneToCart = (itemId: string) => {
     if (!activeTransaction) return;
-    const itemToAdd = [...TICKET_TYPES, ...ADD_ONS].find(p => p.id === itemId);
+    const itemToAdd = [...TICKET_TYPES, ...ADD_ONS, ...MEMBERSHIP_TYPES].find(p => p.id === itemId);
     if (itemToAdd) {
-        const type = TICKET_TYPES.some(t => t.id === itemId) ? 'ticket' : 'addon';
+        let type: 'ticket' | 'addon' | 'membership' = 'addon';
+        if (TICKET_TYPES.some(t => t.id === itemId)) {
+            type = 'ticket';
+        } else if (MEMBERSHIP_TYPES.some(m => m.id === itemId)) {
+            type = 'membership';
+        }
         addToCart(itemToAdd, type);
     }
   };
@@ -262,7 +267,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
 
     // First, clear all existing ticket assignments. This handles un-assigning.
     for (let i = 0; i < newCart.length; i++) {
-        if (newCart[i].type === 'ticket') {
+        if (newCart[i].type === 'ticket' || newCart[i].type === 'membership') {
             newCart[i].assignedGuestId = null;
             newCart[i].assignedGuestName = null;
         }
@@ -339,7 +344,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
 
   const canCheckout = useMemo(() => {
     if (!activeTransaction || activeTransaction.cart.length === 0 || activeTransaction.guests.length === 0) return false;
-    // Every ticket must be assigned to a guest with a valid waiver
+    // Every ticket or membership must be assigned to a guest with a valid waiver
     return activeTransaction.cart.every(item => {
         if (item.type === 'addon') return true;
         if (!item.assignedGuestId) return false;
@@ -462,6 +467,14 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
               </div>
            </section>
            <section className="mt-8">
+              <h2 className="text-sm font-semibold text-gray-600 mb-3">Memberships ({MEMBERSHIP_TYPES.length})</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {MEMBERSHIP_TYPES.map(membership => (
+                    <ProductCard key={membership.id} product={membership} onClick={() => addToCart(membership, 'membership')} disabled={!activeTransaction} />
+                ))}
+              </div>
+           </section>
+           <section className="mt-8">
               <h2 className="text-sm font-semibold text-gray-600 mb-3">Add-ons ({ADD_ONS.length})</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 {ADD_ONS.map(addon => (
@@ -543,7 +556,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
                 </div>
             ) : (
                 <div className="space-y-2">
-                    {groupedCart.some(g => g.item.type === 'ticket') && (
+                    {groupedCart.some(g => g.item.type === 'ticket' || g.item.type === 'membership') && (
                        <Button size="sm" variant="secondary" className="w-full" onClick={() => setAssignWaiverModalOpen(true)}>Assign Jumpers</Button>
                     )}
                     {groupedCart.map((group) => (
@@ -559,7 +572,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
                               <span className="text-sm w-16 text-right">₹{group.item.price * group.quantity}</span>
                             </div>
                           </div>
-                          {group.item.type === 'ticket' && (
+                          {(group.item.type === 'ticket' || group.item.type === 'membership') && (
                             <div className="pl-2 mt-2 pt-2 border-t border-gray-100 space-y-1">
                               {group.itemsWithIndices.map(({ item }, subIndex) => (
                                 <div key={`${item.id}-${subIndex}`} className="flex justify-between items-center text-xs">

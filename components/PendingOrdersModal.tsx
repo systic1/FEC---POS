@@ -53,7 +53,7 @@ const PendingOrdersModal: React.FC<PendingOrdersModalProps> = ({
           {transactions.map(transaction => {
             const assignedGuestIds = new Set(
                 transaction.cart
-                    .filter(item => item.type === 'ticket' && item.assignedGuestId)
+                    .filter(item => (item.type === 'ticket' || item.type === 'membership') && item.assignedGuestId)
                     .map(item => item.assignedGuestId!)
             );
             

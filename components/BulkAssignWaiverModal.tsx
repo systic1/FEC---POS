@@ -24,7 +24,7 @@ const BulkAssignWaiverModal: React.FC<BulkAssignWaiverModalProps> = ({ isOpen, o
   const groupedTickets = useMemo(() => {
     const groups: { [name: string]: { item: CartItem; indices: number[] } } = {};
     transaction.cart.forEach((item, index) => {
-        if (item.type === 'ticket') {
+        if (item.type === 'ticket' || item.type === 'membership') {
             if (!groups[item.name]) {
                 groups[item.name] = { item, indices: [] };
             }
@@ -39,7 +39,7 @@ const BulkAssignWaiverModal: React.FC<BulkAssignWaiverModalProps> = ({ isOpen, o
     if (isOpen) {
       const initialAssignments: { [key: number]: string } = {};
       transaction.cart.forEach((item, index) => {
-        if (item.type === 'ticket' && item.assignedGuestId) {
+        if ((item.type === 'ticket' || item.type === 'membership') && item.assignedGuestId) {
           if (validGuests.some(g => g.id === item.assignedGuestId)) {
             initialAssignments[index] = item.assignedGuestId;
           }
@@ -128,7 +128,7 @@ const BulkAssignWaiverModal: React.FC<BulkAssignWaiverModalProps> = ({ isOpen, o
         })}
          {groupedTickets.length === 0 && (
             <div className="text-center py-10 text-gray-500">
-                <p>No jump tickets in the cart to assign.</p>
+                <p>No jump tickets or memberships in the cart to assign.</p>
             </div>
         )}
       </div>

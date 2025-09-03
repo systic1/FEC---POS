@@ -21,7 +21,7 @@ const summarizeCart = (items: CartItem[]): string => {
 const countGuests = (items: CartItem[]): number => {
     const guestIds = new Set<string>();
     items.forEach(item => {
-        if (item.type === 'ticket' && item.assignedGuestId) {
+        if ((item.type === 'ticket' || item.type === 'membership') && item.assignedGuestId) {
             guestIds.add(item.assignedGuestId);
         }
     });
@@ -117,7 +117,7 @@ const History: React.FC<HistoryProps> = ({ sales }) => {
                 sortedTodaySales.map(sale => {
                   const uniqueAssignedGuests = Array.from(new Set(
                     sale.items
-                        .filter(item => item.type === 'ticket' && item.assignedGuestName)
+                        .filter(item => (item.type === 'ticket' || item.type === 'membership') && item.assignedGuestName)
                         .map(item => item.assignedGuestName!)
                   ));
 

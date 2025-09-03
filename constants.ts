@@ -1,7 +1,7 @@
 
 
 import React from 'react';
-import { TicketType, AddOn, Customer } from './types';
+import { TicketType, AddOn, Customer, Product } from './types';
 
 // Simple SVG icon components for products
 // FIX: Converted from JSX to React.createElement to be valid in a .ts file.
@@ -40,6 +40,12 @@ const FoodIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   )
 );
 
+const MembershipIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  React.createElement('svg', { ...props, xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", fill: "currentColor" },
+    React.createElement('path', { d: "M12,17.27L18.18,21L17,14.64L22,9.73L15.36,8.82L12,3L8.64,8.82L2,9.73L7,14.64L5.82,21L12,17.27Z" })
+  )
+);
+
 
 export const TICKET_TYPES: TicketType[] = [
   { id: 'tkt_gift', name: 'Gift Card', durationMinutes: 0, price: 0, color: 'blue-500', image: GiftCardIcon },
@@ -54,6 +60,13 @@ export const ADD_ONS: AddOn[] = [
   { id: 'addon_water', name: '600ml Drinks', price: 30, color: 'green-500', image: DrinkIcon },
   { id: 'addon_treats', name: 'Healthy Treats', price: 150, color: 'orange-500', image: FoodIcon },
   { id: 'addon_hotfood', name: 'Hot Food', price: 250, color: 'pink-500', image: FoodIcon },
+];
+
+export const MEMBERSHIP_TYPES: Product[] = [
+  { id: 'mem_1m', name: '1 Month Membership', price: 2500, color: 'purple-500', image: MembershipIcon },
+  { id: 'mem_3m', name: '3 Month Membership', price: 6000, color: 'purple-500', image: MembershipIcon },
+  { id: 'mem_6m', name: '6 Month Membership', price: 10000, color: 'indigo-500', image: MembershipIcon },
+  { id: 'mem_12m', name: '12 Month Membership', price: 18000, color: 'indigo-500', image: MembershipIcon },
 ];
 
 // A simple placeholder for a signature image (1x1 transparent pixel)

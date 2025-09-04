@@ -43,8 +43,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
   const [isAssignWaiverModalOpen, setAssignWaiverModalOpen] = useState(false);
   const [isPendingOrdersModalOpen, setPendingOrdersModalOpen] = useState(false);
   
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card' | 'UPI'>('UPI');
-  const [upiId, setUpiId] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card' | 'GPay' | 'PhonePe' | 'Paytm'>('GPay');
   const [currentTime, setCurrentTime] = useState(new Date());
 
   const [aiSuggestion, setAiSuggestion] = useState('');
@@ -299,18 +298,13 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
   const handleProcessPayment = () => {
     if (!activeTransaction || !canCheckout) return;
     
-    if (paymentMethod === 'UPI' && !upiId.trim()) {
-        alert('Please enter the customer\'s UPI ID.');
-        return;
-    }
-
     const saleGuests = activeGuestsInCart.length > 0 ? activeGuestsInCart : (activeTransaction.guests.length > 0 ? [activeTransaction.guests[0]] : []);
     
     if (saleGuests.length === 0) return;
 
     const primarySaleGuest = saleGuests[0];
     
-    const newSale: Sale = {
+    const newSale: Omit<Sale, 'id'> & {id: string} = {
         id: `sale_${new Date().getTime()}`,
         customerId: primarySaleGuest.id, // Primary guest from the active ones
         customerName: `${primarySaleGuest.name}${saleGuests.length > 1 ? ` + ${saleGuests.length - 1}` : ''}`,
@@ -321,11 +315,9 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
         total: grandTotal,
         date: new Date().toISOString(),
         paymentMethod,
-        upiId: paymentMethod === 'UPI' ? upiId : undefined,
     };
     addSale(newSale);
     setCheckoutModalOpen(false);
-    setUpiId('');
     resetAfterSale();
   }
   
@@ -652,22 +644,13 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
         <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Complete Payment">
             <div className="space-y-4">
                 <h3 className="text-2xl font-bold text-center">Total: ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</h3>
-                <div className="flex justify-center gap-2">
-                    {(['UPI', 'Card', 'Cash'] as const).map(method => (
+                <div className="flex justify-center gap-2 flex-wrap">
+                    {(['GPay', 'PhonePe', 'Paytm', 'Card', 'Cash'] as const).map(method => (
                         <Button key={method} variant={paymentMethod === method ? 'primary' : 'secondary'} onClick={() => setPaymentMethod(method)}>
                             {method}
                         </Button>
                     ))}
                 </div>
-                {paymentMethod === 'UPI' && (
-                    <Input 
-                        label="Customer UPI ID"
-                        id="upiId"
-                        value={upiId}
-                        onChange={e => setUpiId(e.target.value)}
-                        placeholder="example@bank"
-                    />
-                )}
                 <div className="mt-6 flex justify-end">
                      <Button size="lg" variant="success" onClick={handleProcessPayment} className="w-full">
                         Process Payment

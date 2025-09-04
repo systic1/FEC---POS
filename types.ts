@@ -46,8 +46,7 @@ export interface Sale {
   gstAmount: number;
   total: number;
   date: string;
-  paymentMethod: 'Cash' | 'Card' | 'UPI';
-  upiId?: string;
+  paymentMethod: 'Cash' | 'Card' | 'GPay' | 'PhonePe' | 'Paytm';
 }
 
 export interface Transaction {

@@ -92,12 +92,6 @@ const ReceiptModal: React.FC<{ sale: Sale, onClose: () => void }> = ({ sale, onC
                     <span>Payment Method:</span>
                     <span>{sale.paymentMethod}</span>
                 </div>
-                {sale.upiId && (
-                    <div className="flex justify-between">
-                        <span>UPI ID:</span>
-                        <span>{sale.upiId}</span>
-                    </div>
-                )}
                 <div className="text-center mt-4">
                     <p>Thank you for visiting!</p>
                 </div>

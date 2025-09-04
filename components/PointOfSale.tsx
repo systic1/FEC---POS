@@ -44,6 +44,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
   const [isPendingOrdersModalOpen, setPendingOrdersModalOpen] = useState(false);
   
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card' | 'UPI'>('UPI');
+  const [upiId, setUpiId] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
 
   const [aiSuggestion, setAiSuggestion] = useState('');
@@ -297,6 +298,11 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
 
   const handleProcessPayment = () => {
     if (!activeTransaction || !canCheckout) return;
+    
+    if (paymentMethod === 'UPI' && !upiId.trim()) {
+        alert('Please enter the customer\'s UPI ID.');
+        return;
+    }
 
     const saleGuests = activeGuestsInCart.length > 0 ? activeGuestsInCart : (activeTransaction.guests.length > 0 ? [activeTransaction.guests[0]] : []);
     
@@ -314,10 +320,12 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
         gstAmount,
         total: grandTotal,
         date: new Date().toISOString(),
-        paymentMethod
+        paymentMethod,
+        upiId: paymentMethod === 'UPI' ? upiId : undefined,
     };
     addSale(newSale);
     setCheckoutModalOpen(false);
+    setUpiId('');
     resetAfterSale();
   }
   
@@ -530,196 +538,186 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
                     {/* AI Suggestion Card */}
                     <div className="p-3 bg-blue-50 border-l-4 border-blue-400 rounded-r-lg">
                         <h4 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="http://www.w3.org/2000/svg" fill="currentColor">
-                              <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 011 1v1h1a1 1 0 110 2h-1v1a1 1 0 11-2 0V6h-1a1 1 0 110-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2h-1v1a1 1 0 11-2 0v-1h-1a1 1 0 110-2h1v-1a1 1 0 011-1z" clipRule="evenodd" />
+                           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.657a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.657 15.657a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM4 10a1 1 0 01-1 1H2a1 1 0 110-2h1a1 1 0 011 1zM15 12a4 4 0 01-8 0c0-1.682.906-3.143 2.197-3.812a.5.5 0 01.403.906A3.001 3.001 0 007 12c0 1.654 1.346 3 3 3s3-1.346 3-3c0-.38-.07-.746-.201-1.094a.5.5 0 01.906-.403A3.999 3.999 0 0115 12z" />
                             </svg>
                             AI Assistant
                         </h4>
-                        <div className="text-sm text-blue-700 mt-2 min-h-[40px]">
-                            {isSuggestionLoading ? (
-                                <div className="flex items-center gap-2 text-gray-500">
-                                    <Spinner />
-                                    <span>Generating tip...</span>
-                                </div>
-                            ) : (
-                                <p>{aiSuggestion}</p>
-                            )}
+                        <div className="text-sm text-blue-700 min-h-[40px]">
+                            {isSuggestionLoading ? <Spinner /> : <p>{aiSuggestion || 'No suggestions at the moment.'}</p>}
                         </div>
                     </div>
-                     <hr/>
-                </div>
-            ) : null}
-            
-            {!activeTransaction || activeTransaction.cart.length === 0 ? (
-                <div className="text-center text-gray-500 pt-16">
-                    <p>{activeTransaction ? 'Your cart is empty' : 'Search for a customer to begin'}</p>
+
+                    {/* Cart Items */}
+                    <div className="space-y-3">
+                        {groupedCart.map(({ item, quantity, itemsWithIndices }) => (
+                            <div key={`${item.id}-${item.type}`} className="p-3 bg-white rounded-lg border border-gray-200">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex-1">
+                                        <p className="font-semibold text-gray-800">{item.name}</p>
+                                        <p className="text-xs text-gray-500">₹{item.price.toLocaleString()}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => handleRemoveOneFromCart(item.id)} className="w-6 h-6 rounded-full bg-gray-200 text-gray-700">-</button>
+                                        <span className="font-bold w-6 text-center">{quantity}</span>
+                                        <button onClick={() => handleAddOneToCart(item.id)} className="w-6 h-6 rounded-full bg-gray-200 text-gray-700">+</button>
+                                    </div>
+                                </div>
+                                {(item.type === 'ticket' || item.type === 'membership') && (
+                                    <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                        {itemsWithIndices.map(({ item: singleItem, index }) => (
+                                            <div key={index}>
+                                                {singleItem.assignedGuestName ? (
+                                                    <span className="px-2 py-0.5 bg-green-100 text-green-800 rounded-full">Assigned to: {singleItem.assignedGuestName}</span>
+                                                ) : (
+                                                    <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full">Not Assigned</span>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                     <Button 
+                        variant="secondary" 
+                        className="w-full !bg-white border"
+                        onClick={() => setAssignWaiverModalOpen(true)}
+                    >
+                        Assign/Edit Jumpers
+                    </Button>
                 </div>
             ) : (
-                <div className="space-y-2">
-                    {groupedCart.some(g => g.item.type === 'ticket' || g.item.type === 'membership') && (
-                       <Button size="sm" variant="secondary" className="w-full" onClick={() => setAssignWaiverModalOpen(true)}>Assign Jumpers</Button>
-                    )}
-                    {groupedCart.map((group) => (
-                        <div key={`${group.item.id}-${group.item.type}`} className="p-2 bg-white rounded-md shadow-sm">
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <p className="font-semibold text-sm">{group.item.name}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button onClick={() => handleRemoveOneFromCart(group.item.id)} className="text-gray-400 hover:text-red-600 w-6 h-6 rounded-full flex items-center justify-center">-</button>
-                              <span className="font-bold w-4 text-center">{group.quantity}</span>
-                              <button onClick={() => handleAddOneToCart(group.item.id)} className="text-gray-400 hover:text-green-600 w-6 h-6 rounded-full flex items-center justify-center">+</button>
-                              <span className="text-sm w-16 text-right">₹{group.item.price * group.quantity}</span>
-                            </div>
-                          </div>
-                          {(group.item.type === 'ticket' || group.item.type === 'membership') && (
-                            <div className="pl-2 mt-2 pt-2 border-t border-gray-100 space-y-1">
-                              {group.itemsWithIndices.map(({ item }, subIndex) => (
-                                <div key={`${item.id}-${subIndex}`} className="flex justify-between items-center text-xs">
-                                  <span className="text-gray-600">Jumper {subIndex + 1}:</span>
-                                  {item.assignedGuestName ?
-                                    <span className="font-medium text-green-800 bg-green-100 px-2 py-0.5 rounded-full">{item.assignedGuestName}</span>
-                                    : <span className="font-medium text-yellow-800 bg-yellow-100 px-2 py-0.5 rounded-full">Not Assigned</span>
-                                  }
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                    ))}
+                <div className="text-center py-20 text-gray-500">
+                    <p className="font-semibold">No Active Transaction</p>
+                    <p className="text-sm mt-2">Search for a customer or group to begin a new sale.</p>
                 </div>
             )}
         </div>
-        <div className="p-4 border-t bg-white">
-            {activeTransaction && activeTransaction.cart.length > 0 && (
-              <div className="space-y-1 text-sm mb-3">
-                <div className="flex justify-between">
-                    <span className="text-gray-600">Subtotal</span>
-                    <span>₹{subtotal.toFixed(2)}</span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Discount</span>
-                    {activeTransaction.discount.value > 0 ? (
-                        <div className="flex items-center gap-2">
-                            <span className="font-semibold text-red-600">-₹{discountAmount.toFixed(2)}</span>
-                            <button onClick={handleRemoveDiscount} className="text-xs text-red-500 hover:underline">[Remove]</button>
-                        </div>
-                    ) : (
-                        <button onClick={() => setIsApplyingDiscount(!isApplyingDiscount)} className="text-xs text-blue-600 hover:underline">Add Discount</button>
-                    )}
-                </div>
-                
-                {isApplyingDiscount && (
-                    <div className="p-2 bg-gray-100 rounded-md my-1 space-y-2">
-                        <div className="flex gap-2">
-                            <input type="number" placeholder="Value" value={discountInput.value} onChange={(e) => setDiscountInput(p => ({...p, value: e.target.value}))} className="w-full px-3 py-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
-                            <select value={discountInput.type} onChange={(e) => setDiscountInput(p => ({...p, type: e.target.value as 'fixed'|'percentage'}))} className="border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                <option value="fixed">₹</option>
-                                <option value="percentage">%</option>
-                            </select>
-                        </div>
-                        <div className="flex justify-end gap-2">
-                            <Button size="sm" variant="secondary" onClick={() => { setIsApplyingDiscount(false); setDiscountInput({type:'fixed', value:''})}}>Cancel</Button>
-                            <Button size="sm" onClick={handleApplyDiscount}>Apply</Button>
-                        </div>
+        
+        {/* Footer with totals and checkout */}
+        {activeTransaction && (
+            <div className="p-4 border-t bg-white">
+                <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                        <span>Subtotal</span>
+                        <span>₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                     </div>
-                )}
-
-
-                <div className="flex justify-between">
-                    <span className="text-gray-600">GST (18%)</span>
-                    <span>+₹{gstAmount.toFixed(2)}</span>
+                     <div className="flex justify-between items-center">
+                        <span>Discount</span>
+                        {discountAmount > 0 ? (
+                             <div className="flex items-center gap-2">
+                                <span>- ₹{discountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                <button onClick={handleRemoveDiscount} className="text-red-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+                                </button>
+                            </div>
+                        ) : (
+                             <Button size="sm" variant="secondary" onClick={() => setIsApplyingDiscount(true)}>Apply Discount</Button>
+                        )}
+                    </div>
+                    <div className="flex justify-between">
+                        <span>GST (18%)</span>
+                        <span>₹{gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <hr/>
+                    <div className="flex justify-between font-bold text-lg text-gray-800">
+                        <span>Grand Total</span>
+                        <span>₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    </div>
                 </div>
-              </div>
-            )}
-
-            <div className="flex justify-between font-bold text-lg mb-4 border-t pt-2">
-                <span>Total</span>
-                <span>₹{grandTotal.toFixed(2)}</span>
+                <div className="mt-4">
+                    {!canCheckout && activeTransaction.cart.length > 0 && (
+                        <div className="text-xs text-red-600 bg-red-50 p-2 rounded-md mb-2">
+                            All jump tickets and memberships must be assigned to a guest with a valid waiver before checkout.
+                        </div>
+                    )}
+                    <Button 
+                        size="lg" 
+                        variant="success" 
+                        className="w-full"
+                        onClick={handleCheckout}
+                        disabled={!canCheckout}
+                    >
+                        Checkout (₹{grandTotal.toFixed(2)})
+                    </Button>
+                </div>
             </div>
-            <Button className="w-full" onClick={handleCheckout} disabled={!canCheckout}>
-               Pay
-            </Button>
-        </div>
+        )}
       </aside>
 
       {/* Modals */}
-      {activeTransaction && (
-        <BulkAssignWaiverModal
-          isOpen={isAssignWaiverModalOpen}
-          onClose={() => setAssignWaiverModalOpen(false)}
-          transaction={activeTransaction}
-          onAssign={handleBulkAssignWaiver}
-        />
+      {isCheckoutModalOpen && (
+        <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Complete Payment">
+            <div className="space-y-4">
+                <h3 className="text-2xl font-bold text-center">Total: ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</h3>
+                <div className="flex justify-center gap-2">
+                    {(['UPI', 'Card', 'Cash'] as const).map(method => (
+                        <Button key={method} variant={paymentMethod === method ? 'primary' : 'secondary'} onClick={() => setPaymentMethod(method)}>
+                            {method}
+                        </Button>
+                    ))}
+                </div>
+                {paymentMethod === 'UPI' && (
+                    <Input 
+                        label="Customer UPI ID"
+                        id="upiId"
+                        value={upiId}
+                        onChange={e => setUpiId(e.target.value)}
+                        placeholder="example@bank"
+                    />
+                )}
+                <div className="mt-6 flex justify-end">
+                     <Button size="lg" variant="success" onClick={handleProcessPayment} className="w-full">
+                        Process Payment
+                    </Button>
+                </div>
+            </div>
+        </Modal>
       )}
 
-      <PendingOrdersModal
-        isOpen={isPendingOrdersModalOpen}
-        onClose={() => setPendingOrdersModalOpen(false)}
-        transactions={transactions}
-        activeTransactionId={activeTransactionId}
-        setActiveTransactionId={setActiveTransactionId}
-        onMerge={handleMergeTransactions}
-        onDelete={handleDeleteTransaction}
+      {isAssignWaiverModalOpen && activeTransaction && (
+          <BulkAssignWaiverModal 
+            isOpen={isAssignWaiverModalOpen}
+            onClose={() => setAssignWaiverModalOpen(false)}
+            transaction={activeTransaction}
+            onAssign={handleBulkAssignWaiver}
+          />
+      )}
+      
+      <PendingOrdersModal 
+          isOpen={isPendingOrdersModalOpen}
+          onClose={() => setPendingOrdersModalOpen(false)}
+          transactions={transactions}
+          activeTransactionId={activeTransactionId}
+          setActiveTransactionId={(id) => setActiveTransactionId(id)}
+          onMerge={handleMergeTransactions}
+          onDelete={handleDeleteTransaction}
       />
-
-
-      <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Final Bill">
-        <div className="space-y-6">
-            <div id="receipt-to-print" className="font-mono bg-white p-4 border-2 border-dashed border-gray-400 rounded-lg">
-                <div className="text-center">
-                    <h3 className="font-bold text-lg">Jump India Fun Zone</h3>
-                    <p className="text-xs">Tax Invoice</p>
-                    <p className="text-xs">{new Date().toLocaleString()}</p>
-                </div>
-                <hr className="my-2 border-dashed" />
-                <div className="text-xs">
-                    <div className="flex font-bold">
-                        <span className="flex-grow">Item</span>
-                        <span className="w-8 text-center">Qty</span>
-                        <span className="w-16 text-right">Price</span>
-                    </div>
-                    {groupedCart.map(group => (
-                        <div key={group.item.id} className="flex">
-                            <span className="flex-grow truncate">{group.item.name}</span>
-                            <span className="w-8 text-center">{group.quantity}</span>
-                            <span className="w-16 text-right">₹{(group.item.price * group.quantity).toFixed(2)}</span>
-                        </div>
-                    ))}
-                </div>
-                <hr className="my-2 border-dashed" />
-                <div className="space-y-1 text-sm">
-                    <div className="flex justify-between"><span>Subtotal:</span><span>₹{subtotal.toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span>Discount:</span><span>-₹{discountAmount.toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span>GST @ 18%:</span><span>+₹{gstAmount.toFixed(2)}</span></div>
-                    <div className="flex justify-between font-bold text-base border-t border-dashed pt-1 mt-1"><span>GRAND TOTAL:</span><span>₹{grandTotal.toFixed(2)}</span></div>
-                </div>
-                <p className="text-center text-xs mt-4">Thank you for visiting!</p>
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
-                <div className="flex gap-4">
-                    {(['UPI', 'Card', 'Cash'] as const).map(method => (
-                        <button key={method} onClick={() => setPaymentMethod(method)} className={`px-4 py-2 rounded-md border ${paymentMethod === method ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-50'}`}>
-                            {method}
-                        </button>
-                    ))}
-                </div>
-            </div>
-            <div className="pt-4 flex justify-between items-center">
-                <Button variant="secondary" onClick={() => window.print()} className="flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v6a2 2 0 002 2h12a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm-1 9a1 1 0 01-1 1H9a1 1 0 110-2h4a1 1 0 011 1zm3-4a1 1 0 00-1-1h-6a1 1 0 100 2h6a1 1 0 001-1z" clipRule="evenodd" />
-                    </svg>
-                    Print Receipt
-                </Button>
-                <div className="flex gap-3">
-                    <Button variant="secondary" onClick={() => setCheckoutModalOpen(false)}>Cancel</Button>
-                    <Button variant="success" onClick={handleProcessPayment}>Confirm Payment</Button>
-                </div>
-            </div>
-        </div>
+      
+      <Modal isOpen={isApplyingDiscount} onClose={() => setIsApplyingDiscount(false)} title="Apply Discount">
+          <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <select 
+                    value={discountInput.type} 
+                    onChange={e => setDiscountInput(prev => ({ ...prev, type: e.target.value }))}
+                    className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                >
+                    <option value="fixed">Fixed (₹)</option>
+                    <option value="percentage">Percentage (%)</option>
+                </select>
+                <Input 
+                    label="Discount Value" 
+                    id="discount-value" 
+                    type="number" 
+                    value={discountInput.value} 
+                    onChange={e => setDiscountInput(prev => ({...prev, value: e.target.value}))}
+                    placeholder="e.g. 100 or 10"
+                />
+              </div>
+              <Button onClick={handleApplyDiscount} className="w-full">Apply Discount</Button>
+          </div>
       </Modal>
 
     </div>

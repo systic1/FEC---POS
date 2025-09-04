@@ -47,6 +47,7 @@ export interface Sale {
   total: number;
   date: string;
   paymentMethod: 'Cash' | 'Card' | 'UPI';
+  upiId?: string;
 }
 
 export interface Transaction {

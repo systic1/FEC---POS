@@ -1,9 +1,9 @@
-
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Customer } from '../types';
 import useLocalStorage from '../hooks/useLocalStorage';
 import WaiverForm from './WaiverForm';
 import Button from './ui/Button';
+import QRCode from 'qrcode';
 
 type Participant = Partial<Customer> & {
     tempId: number;
@@ -20,6 +20,7 @@ const WaiverPortal: React.FC = () => {
 
   const [activeParticipantId, setActiveParticipantId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
 
   const startSession = useCallback(() => {
     const groupId = `JMP-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -95,9 +96,23 @@ const WaiverPortal: React.FC = () => {
     setSession(prev => prev ? { ...prev, isFinished: true } : null);
   };
   
+  useEffect(() => {
+    if (session?.isFinished && session.groupId) {
+        QRCode.toDataURL(session.groupId, { width: 256, margin: 2 })
+            .then(url => {
+                setQrCodeUrl(url);
+            })
+            .catch(err => {
+                console.error("Failed to generate QR code:", err);
+            });
+    }
+  }, [session?.isFinished, session?.groupId]);
+
+  
   const resetSession = () => {
     setSession(null);
     setActiveParticipantId(null);
+    setQrCodeUrl('');
   };
 
   const activeParticipant = useMemo(() => {
@@ -130,9 +145,12 @@ const WaiverPortal: React.FC = () => {
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
                 <h2 className="text-2xl font-semibold text-gray-800">Group Waivers Submitted!</h2>
-                <p className="text-gray-600 mt-2">Your group is all set. Please provide the code below at the counter.</p>
+                <p className="text-gray-600 mt-2">Your group is all set. Please show this screen at the counter.</p>
+                
+                {qrCodeUrl && <img src={qrCodeUrl} alt="Group ID QR Code" className="mx-auto my-6 rounded-lg shadow-md" />}
+
                 <div className="my-6 p-4 bg-blue-100 border-2 border-dashed border-blue-400 rounded-lg">
-                    <p className="text-sm font-medium text-blue-700">Your Group Code is:</p>
+                    <p className="text-sm font-medium text-blue-700">Or provide your Group Code:</p>
                     <p className="text-3xl font-bold text-blue-800 tracking-widest">{session.groupId}</p>
                 </div>
                 <Button onClick={resetSession}>Sign for Another Group</Button>

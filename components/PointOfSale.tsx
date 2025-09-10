@@ -56,6 +56,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
     const timer = setInterval(() => setCurrentTime(new Date()), 60000); // Update time every minute
     return () => clearInterval(timer);
   }, []);
+  
 
   const activeTransaction = useMemo(() => {
     return transactions.find(t => t.id === activeTransactionId) || null;
@@ -104,10 +105,10 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
     setActiveTransactionId(null);
   }
 
-  const handleCustomerSearch = () => {
-    if (!customerSearch.trim()) return;
+  const handleCustomerSearch = (term?: string) => {
+    const searchTerm = (term || customerSearch).trim();
+    if (!searchTerm) return;
     setSearchMessage(null);
-    const searchTerm = customerSearch.trim();
     
     let groupGuests: Customer[] = [];
     let groupPhone: string | null = null;
@@ -452,8 +453,8 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
                 onChange={e => { setCustomerSearch(e.target.value); setSearchMessage(null); }}
                 onKeyDown={e => e.key === 'Enter' && handleCustomerSearch()}
              />
-             {searchMessage && <p className={`text-xs mt-1 ${searchMessage.type === 'error' ? 'text-red-600' : 'text-blue-600'}`}>{searchMessage.text}</p>}
           </div>
+          {searchMessage && <p className={`text-xs mt-1 text-center ${searchMessage.type === 'error' ? 'text-red-600' : 'text-blue-600'}`}>{searchMessage.text}</p>}
         </header>
         
         {/* Product Grid */}

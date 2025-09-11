@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Customer, Sale, CartItem, Product, Transaction } from '../types';
+import { Customer, Sale, CartItem, Product, Transaction, CashDrawerSession } from '../types';
 import { TICKET_TYPES, ADD_ONS, MEMBERSHIP_TYPES } from '../constants';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
@@ -17,6 +17,7 @@ interface PointOfSaleProps {
   customers: Customer[];
   addSale: (sale: Sale) => void;
   addOrUpdateCustomer: (customer: Customer) => void;
+  activeCashDrawerSession: CashDrawerSession | undefined;
 }
 
 const ProductCard: React.FC<{ product: Product; onClick: () => void; disabled: boolean }> = ({ product, onClick, disabled }) => (
@@ -32,7 +33,7 @@ const ProductCard: React.FC<{ product: Product; onClick: () => void; disabled: b
 );
 
 
-const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) => {
+const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, activeCashDrawerSession }) => {
   const [customerSearch, setCustomerSearch] = useState('');
   const [searchMessage, setSearchMessage] = useState<{type: 'error' | 'info', text: string} | null>(null);
   
@@ -293,6 +294,10 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
         alert("Cart is empty.");
         return;
     }
+    if (paymentMethod === 'Cash' && !activeCashDrawerSession) {
+        alert("Cannot process cash sale. The register is closed.");
+        return;
+    }
     setCheckoutModalOpen(true);
   };
 
@@ -434,6 +439,10 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
              <div className="text-gray-900 font-bold text-xl">
                {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
              </div>
+             <div className="flex items-center gap-2 text-sm">
+                <span className={`w-3 h-3 rounded-full ${activeCashDrawerSession ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                <span>Register {activeCashDrawerSession ? 'Open' : 'Closed'}</span>
+             </div>
              <Button 
                 size="sm" 
                 variant="secondary"
@@ -459,30 +468,41 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
         
         {/* Product Grid */}
         <main className="flex-1 p-6 overflow-y-auto bg-slate-50">
-           <section>
-              <h2 className="text-sm font-semibold text-gray-600 mb-3">Jump Tickets ({TICKET_TYPES.length})</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {TICKET_TYPES.map(ticket => (
-                    <ProductCard key={ticket.id} product={ticket} onClick={() => addToCart(ticket, 'ticket')} disabled={!activeTransaction} />
-                ))}
-              </div>
-           </section>
-           <section className="mt-8">
-              <h2 className="text-sm font-semibold text-gray-600 mb-3">Memberships ({MEMBERSHIP_TYPES.length})</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {MEMBERSHIP_TYPES.map(membership => (
-                    <ProductCard key={membership.id} product={membership} onClick={() => addToCart(membership, 'membership')} disabled={!activeTransaction} />
-                ))}
-              </div>
-           </section>
-           <section className="mt-8">
-              <h2 className="text-sm font-semibold text-gray-600 mb-3">Add-ons ({ADD_ONS.length})</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {ADD_ONS.map(addon => (
-                    <ProductCard key={addon.id} product={addon} onClick={() => addToCart(addon, 'addon')} disabled={!activeTransaction} />
-                ))}
-              </div>
-           </section>
+           {!activeCashDrawerSession ? (
+             <div className="h-full flex items-center justify-center">
+                <div className="text-center bg-white p-10 rounded-lg shadow-md">
+                    <h2 className="text-2xl font-bold text-red-600">Cash Register is Closed</h2>
+                    <p className="mt-2 text-gray-500">No sales can be processed until a new cash session is started.</p>
+                </div>
+             </div>
+           ) : (
+            <>
+              <section>
+                  <h2 className="text-sm font-semibold text-gray-600 mb-3">Jump Tickets ({TICKET_TYPES.length})</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {TICKET_TYPES.map(ticket => (
+                        <ProductCard key={ticket.id} product={ticket} onClick={() => addToCart(ticket, 'ticket')} disabled={!activeTransaction} />
+                    ))}
+                  </div>
+              </section>
+              <section className="mt-8">
+                  <h2 className="text-sm font-semibold text-gray-600 mb-3">Memberships ({MEMBERSHIP_TYPES.length})</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {MEMBERSHIP_TYPES.map(membership => (
+                        <ProductCard key={membership.id} product={membership} onClick={() => addToCart(membership, 'membership')} disabled={!activeTransaction} />
+                    ))}
+                  </div>
+              </section>
+              <section className="mt-8">
+                  <h2 className="text-sm font-semibold text-gray-600 mb-3">Add-ons ({ADD_ONS.length})</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {ADD_ONS.map(addon => (
+                        <ProductCard key={addon.id} product={addon} onClick={() => addToCart(addon, 'addon')} disabled={!activeTransaction} />
+                    ))}
+                  </div>
+              </section>
+            </>
+           )}
         </main>
       </div>
       
@@ -652,8 +672,17 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale }) 
                         </Button>
                     ))}
                 </div>
+                 {paymentMethod === 'Cash' && !activeCashDrawerSession && (
+                    <p className="text-red-500 text-sm text-center">Cannot accept cash. Register is closed.</p>
+                 )}
                 <div className="mt-6 flex justify-end">
-                     <Button size="lg" variant="success" onClick={handleProcessPayment} className="w-full">
+                     <Button 
+                        size="lg" 
+                        variant="success" 
+                        onClick={handleProcessPayment} 
+                        className="w-full"
+                        disabled={paymentMethod === 'Cash' && !activeCashDrawerSession}
+                    >
                         Process Payment
                     </Button>
                 </div>

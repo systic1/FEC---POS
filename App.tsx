@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { Customer, Sale } from './types';
+import React, { useState, useCallback, useMemo } from 'react';
+import { Customer, Sale, CashDrawerSession } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
 import Dashboard from './components/Dashboard';
 import PointOfSale from './components/PointOfSale';
@@ -9,8 +9,11 @@ import StaffManagement from './components/StaffManagement';
 import { MOCK_CUSTOMERS } from './constants';
 import Login from './components/Login';
 import { User, Role, DEFAULT_USERS } from './auth';
+import OpenRegisterModal from './components/cash-drawer/OpenRegisterModal';
+import CloseRegisterModal from './components/cash-drawer/CloseRegisterModal';
+import CashDrawerHistory from './components/cash-drawer/CashDrawerHistory';
 
-type View = 'dashboard' | 'sale' | 'history' | 'customers' | 'staff';
+type View = 'dashboard' | 'sale' | 'history' | 'customers' | 'staff' | 'cashdrawer';
 
 // Define which roles can access which views
 const viewPermissions: Record<View, Role[]> = {
@@ -19,6 +22,7 @@ const viewPermissions: Record<View, Role[]> = {
   history: ['manager', 'admin'],
   customers: ['manager', 'admin'],
   staff: ['admin'],
+  cashdrawer: ['manager', 'admin'],
 };
 
 
@@ -27,16 +31,23 @@ const App: React.FC = () => {
   const [sales, setSales] = useLocalStorage<Sale[]>('sales', []);
   const [users, setUsers] = useLocalStorage<User[]>('users', DEFAULT_USERS);
   const [currentUser, setCurrentUser] = useLocalStorage<User | null>('currentUser', null);
+  const [cashDrawerSessions, setCashDrawerSessions] = useLocalStorage<CashDrawerSession[]>('cashDrawerSessions', []);
   
-  // Default view will depend on role, or be null if no permissions
+  const [isClosingRegister, setIsClosingRegister] = useState(false);
+
+  const activeCashDrawerSession = useMemo(() => 
+    cashDrawerSessions.find(s => s.status === 'OPEN'),
+  [cashDrawerSessions]);
+
   const getDefaultView = (role: Role | undefined): View => {
-    if (!role) return 'sale'; // Fallback, though should not happen
+    if (!role) return 'sale'; 
     if (viewPermissions.sale.includes(role)) return 'sale';
     if (viewPermissions.history.includes(role)) return 'history';
     if (viewPermissions.customers.includes(role)) return 'customers';
     if (viewPermissions.dashboard.includes(role)) return 'dashboard';
     if (viewPermissions.staff.includes(role)) return 'staff';
-    return 'sale'; // Should not be reached
+    if (viewPermissions.cashdrawer.includes(role)) return 'cashdrawer';
+    return 'sale'; 
   };
   
   const [activeView, setActiveView] = useState<View>(() => getDefaultView(currentUser?.role));
@@ -51,12 +62,55 @@ const App: React.FC = () => {
   };
   
   const handleLogout = () => {
-    setCurrentUser(null);
+    if (activeCashDrawerSession && activeCashDrawerSession.openedByUserId === currentUser?.code) {
+        alert('You have an open cash session. Please end your shift before logging out.');
+        setIsClosingRegister(true);
+    } else {
+        setCurrentUser(null);
+    }
+  };
+
+  const startCashDrawerSession = (openingBalance: number) => {
+    if (!currentUser) return;
+    const newSession: CashDrawerSession = {
+        id: `session_${new Date().getTime()}`,
+        openingTime: new Date().toISOString(),
+        closingTime: null,
+        openingBalance,
+        closingBalance: null,
+        openedByUserId: currentUser.code,
+        closedByUserId: null,
+        status: 'OPEN',
+    };
+    setCashDrawerSessions(prev => [...prev, newSession]);
+  };
+
+  const endCashDrawerSession = (closingBalance: number) => {
+    if (!currentUser || !activeCashDrawerSession) return;
+    setCashDrawerSessions(prev => 
+        prev.map(s => 
+            s.id === activeCashDrawerSession.id 
+            ? {
+                ...s,
+                status: 'CLOSED',
+                closingTime: new Date().toISOString(),
+                closingBalance,
+                closedByUserId: currentUser.code,
+            }
+            : s
+        )
+    );
+    setIsClosingRegister(false);
+    setCurrentUser(null); // Log out after closing register
   };
 
   const addSale = useCallback((sale: Sale) => {
+    if (!activeCashDrawerSession && sale.paymentMethod === 'Cash') {
+        alert("Cannot process cash sale. No active cash register session.");
+        return;
+    }
     setSales(prev => [...prev, sale]);
-  }, [setSales]);
+  }, [setSales, activeCashDrawerSession]);
 
   const addOrUpdateCustomer = useCallback((customer: Customer) => {
     setCustomers(prev => {
@@ -93,6 +147,7 @@ const App: React.FC = () => {
       { id: 'sale', label: 'Entry', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg> },
       { id: 'history', label: 'History', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
       { id: 'customers', label: 'Customers', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg> },
+      { id: 'cashdrawer', label: 'Cash Drawer', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
       { id: 'staff', label: 'Staff', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.122-1.28-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.122-1.28.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
     ];
     
@@ -124,6 +179,18 @@ const App: React.FC = () => {
                 <p className="text-xs font-medium text-white truncate">{user.name}</p>
                 <p className="text-xs text-gray-400 capitalize">{user.role}</p>
             </div>
+             {activeCashDrawerSession && (
+                <button
+                    onClick={() => setIsClosingRegister(true)}
+                    className="w-full flex flex-col items-center justify-center py-3 transition-colors duration-200 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md mb-2"
+                    aria-label="End Shift"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-xs mt-1">End Shift</span>
+                </button>
+             )}
             <button
                 onClick={onLogout}
                 className="w-full flex flex-col items-center justify-center py-3 transition-colors duration-200 hover:bg-red-800 hover:text-white rounded-md"
@@ -155,21 +222,36 @@ const App: React.FC = () => {
       case 'dashboard':
         return <Dashboard sales={sales} customers={customers} />;
       case 'sale':
-        return <PointOfSale sales={sales} customers={customers} addSale={addSale} addOrUpdateCustomer={addOrUpdateCustomer} />;
+        return <PointOfSale sales={sales} customers={customers} addSale={addSale} addOrUpdateCustomer={addOrUpdateCustomer} activeCashDrawerSession={activeCashDrawerSession} />;
       case 'history':
         return <History sales={sales} />;
       case 'customers':
         return <CustomerManagement customers={customers} addOrUpdateCustomer={addOrUpdateCustomer}/>;
       case 'staff':
         return <StaffManagement users={users} addUser={addUser} deleteUser={deleteUser} updateUser={updateUser} />;
+      case 'cashdrawer':
+        return <CashDrawerHistory sessions={cashDrawerSessions} users={users} />;
       default:
-        // This default case should ideally not be reached if logic is correct
         return <Dashboard sales={sales} customers={customers} />;
     }
   }
   
   if (!currentUser) {
     return <Login onLoginSuccess={handleLogin} authenticate={authenticateUser} />;
+  }
+
+  if (!activeCashDrawerSession) {
+    return <OpenRegisterModal onSessionStart={startCashDrawerSession} />;
+  }
+  
+  if (isClosingRegister) {
+    return <CloseRegisterModal 
+        onClose={() => setIsClosingRegister(false)}
+        onSessionEnd={endCashDrawerSession}
+        session={activeCashDrawerSession}
+        sales={sales}
+        currentUser={currentUser}
+     />
   }
 
   return (

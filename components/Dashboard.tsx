@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { Sale, Customer } from '../types';
@@ -116,34 +115,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers }) => {
             </ResponsiveContainer>
         </div>
       </Card>
-      
-       {/* Recent Sales */}
-      <Card>
-          <h2 className="text-xl font-semibold mb-4">Recent Transactions</h2>
-          <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left text-gray-500">
-                  <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                      <tr>
-                          <th scope="col" className="px-6 py-3">Customer</th>
-                          <th scope="col" className="px-6 py-3">Items</th>
-                          <th scope="col" className="px-6 py-3">Total</th>
-                          <th scope="col" className="px-6 py-3">Time</th>
-                      </tr>
-                  </thead>
-                  <tbody>
-                      {[...sales].reverse().slice(0, 5).map(sale => (
-                          <tr key={sale.id} className="bg-white border-b">
-                              <td className="px-6 py-4 font-medium text-gray-900">{sale.customerName}</td>
-                              <td className="px-6 py-4">{sale.items.length}</td>
-                              <td className="px-6 py-4">₹{sale.total.toLocaleString('en-IN')}</td>
-                              <td className="px-6 py-4">{new Date(sale.date).toLocaleTimeString()}</td>
-                          </tr>
-                      ))}
-                  </tbody>
-              </table>
-          </div>
-      </Card>
-
     </div>
   );
 };

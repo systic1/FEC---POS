@@ -5,11 +5,12 @@ import Dashboard from './components/Dashboard';
 import PointOfSale from './components/PointOfSale';
 import CustomerManagement from './components/CustomerManagement';
 import History from './components/History';
+import StaffManagement from './components/StaffManagement';
 import { MOCK_CUSTOMERS } from './constants';
 import Login from './components/Login';
-import { User, Role } from './auth';
+import { User, Role, DEFAULT_USERS } from './auth';
 
-type View = 'dashboard' | 'sale' | 'history' | 'customers';
+type View = 'dashboard' | 'sale' | 'history' | 'customers' | 'staff';
 
 // Define which roles can access which views
 const viewPermissions: Record<View, Role[]> = {
@@ -17,12 +18,14 @@ const viewPermissions: Record<View, Role[]> = {
   sale: ['staff', 'manager', 'admin'],
   history: ['manager', 'admin'],
   customers: ['manager', 'admin'],
+  staff: ['admin'],
 };
 
 
 const App: React.FC = () => {
   const [customers, setCustomers] = useLocalStorage<Customer[]>('customers', MOCK_CUSTOMERS);
   const [sales, setSales] = useLocalStorage<Sale[]>('sales', []);
+  const [users, setUsers] = useLocalStorage<User[]>('users', DEFAULT_USERS);
   const [currentUser, setCurrentUser] = useLocalStorage<User | null>('currentUser', null);
   
   // Default view will depend on role, or be null if no permissions
@@ -32,11 +35,15 @@ const App: React.FC = () => {
     if (viewPermissions.history.includes(role)) return 'history';
     if (viewPermissions.customers.includes(role)) return 'customers';
     if (viewPermissions.dashboard.includes(role)) return 'dashboard';
+    if (viewPermissions.staff.includes(role)) return 'staff';
     return 'sale'; // Should not be reached
   };
   
   const [activeView, setActiveView] = useState<View>(() => getDefaultView(currentUser?.role));
 
+  const authenticateUser = (code: string): User | null => {
+    return users.find(user => user.code === code) || null;
+  };
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
@@ -63,6 +70,14 @@ const App: React.FC = () => {
     });
   }, [setCustomers]);
 
+  const addUser = (user: User) => {
+    setUsers(prev => [...prev, user]);
+  };
+
+  const deleteUser = (code: string) => {
+    setUsers(prev => prev.filter(user => user.code !== code));
+  };
+
   const Sidebar: React.FC<{ 
     setView: (view: View) => void; 
     currentView: View; 
@@ -74,6 +89,7 @@ const App: React.FC = () => {
       { id: 'sale', label: 'Entry', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg> },
       { id: 'history', label: 'History', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
       { id: 'customers', label: 'Customers', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg> },
+      { id: 'staff', label: 'Staff', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.122-1.28-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.122-1.28.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
     ];
     
     const navItems = allNavItems.filter(item => viewPermissions[item.id].includes(user.role));
@@ -140,6 +156,8 @@ const App: React.FC = () => {
         return <History sales={sales} />;
       case 'customers':
         return <CustomerManagement customers={customers} addOrUpdateCustomer={addOrUpdateCustomer}/>;
+      case 'staff':
+        return <StaffManagement users={users} addUser={addUser} deleteUser={deleteUser} />;
       default:
         // This default case should ideally not be reached if logic is correct
         return <Dashboard sales={sales} customers={customers} />;
@@ -147,7 +165,7 @@ const App: React.FC = () => {
   }
   
   if (!currentUser) {
-    return <Login onLoginSuccess={handleLogin} />;
+    return <Login onLoginSuccess={handleLogin} authenticate={authenticateUser} />;
   }
 
   return (

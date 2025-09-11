@@ -7,12 +7,8 @@ export interface User {
 }
 
 // In a real application, this would come from a secure backend.
-const USERS: User[] = [
+export const DEFAULT_USERS: User[] = [
   { code: '1111', name: 'Admin User', role: 'admin' },
   { code: '2222', name: 'Manager User', role: 'manager' },
   { code: '3333', name: 'Staff User', role: 'staff' },
 ];
-
-export const authenticate = (code: string): User | null => {
-  return USERS.find(user => user.code === code) || null;
-};

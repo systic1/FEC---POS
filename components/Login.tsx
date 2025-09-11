@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { authenticate, User } from '../auth';
+import { User } from '../auth';
 import Button from './ui/Button';
 import Input from './ui/Input';
 
 interface LoginProps {
   onLoginSuccess: (user: User) => void;
+  authenticate: (code: string) => User | null;
 }
 
-const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
+const Login: React.FC<LoginProps> = ({ onLoginSuccess, authenticate }) => {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
 

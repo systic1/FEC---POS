@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useState, useCallback } from 'react';
 import { Customer, Sale } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
@@ -10,13 +6,46 @@ import PointOfSale from './components/PointOfSale';
 import CustomerManagement from './components/CustomerManagement';
 import History from './components/History';
 import { MOCK_CUSTOMERS } from './constants';
+import Login from './components/Login';
+import { User, Role } from './auth';
 
 type View = 'dashboard' | 'sale' | 'history' | 'customers';
+
+// Define which roles can access which views
+const viewPermissions: Record<View, Role[]> = {
+  dashboard: ['admin'],
+  sale: ['staff', 'manager', 'admin'],
+  history: ['manager', 'admin'],
+  customers: ['manager', 'admin'],
+};
+
 
 const App: React.FC = () => {
   const [customers, setCustomers] = useLocalStorage<Customer[]>('customers', MOCK_CUSTOMERS);
   const [sales, setSales] = useLocalStorage<Sale[]>('sales', []);
-  const [activeView, setActiveView] = useState<View>('sale');
+  const [currentUser, setCurrentUser] = useLocalStorage<User | null>('currentUser', null);
+  
+  // Default view will depend on role, or be null if no permissions
+  const getDefaultView = (role: Role | undefined): View => {
+    if (!role) return 'sale'; // Fallback, though should not happen
+    if (viewPermissions.sale.includes(role)) return 'sale';
+    if (viewPermissions.history.includes(role)) return 'history';
+    if (viewPermissions.customers.includes(role)) return 'customers';
+    if (viewPermissions.dashboard.includes(role)) return 'dashboard';
+    return 'sale'; // Should not be reached
+  };
+  
+  const [activeView, setActiveView] = useState<View>(() => getDefaultView(currentUser?.role));
+
+
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    setActiveView(getDefaultView(user.role));
+  };
+  
+  const handleLogout = () => {
+    setCurrentUser(null);
+  };
 
   const addSale = useCallback((sale: Sale) => {
     setSales(prev => [...prev, sale]);
@@ -34,13 +63,20 @@ const App: React.FC = () => {
     });
   }, [setCustomers]);
 
-  const Sidebar: React.FC<{ setView: (view: View) => void; currentView: View }> = ({ setView, currentView }) => {
-    const navItems: { id: View; label: string; icon: JSX.Element }[] = [
+  const Sidebar: React.FC<{ 
+    setView: (view: View) => void; 
+    currentView: View; 
+    user: User;
+    onLogout: () => void;
+  }> = ({ setView, currentView, user, onLogout }) => {
+    const allNavItems: { id: View; label: string; icon: JSX.Element }[] = [
       { id: 'dashboard', label: 'Dashboard', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> },
       { id: 'sale', label: 'Entry', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg> },
       { id: 'history', label: 'History', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
       { id: 'customers', label: 'Customers', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg> },
     ];
+    
+    const navItems = allNavItems.filter(item => viewPermissions[item.id].includes(user.role));
   
     return (
       <aside className="w-24 bg-gray-900 text-gray-300 flex flex-col items-center py-4 space-y-4">
@@ -63,11 +99,38 @@ const App: React.FC = () => {
             ))}
           </ul>
         </nav>
+        <div className="w-full px-2">
+            <div className="text-center mb-2">
+                <p className="text-xs font-medium text-white truncate">{user.name}</p>
+                <p className="text-xs text-gray-400 capitalize">{user.role}</p>
+            </div>
+            <button
+                onClick={onLogout}
+                className="w-full flex flex-col items-center justify-center py-3 transition-colors duration-200 hover:bg-red-800 hover:text-white rounded-md"
+                aria-label="Logout"
+              >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span className="text-xs mt-1">Logout</span>
+            </button>
+        </div>
       </aside>
     );
   };
 
   const renderView = () => {
+    if (!currentUser || !viewPermissions[activeView].includes(currentUser.role)) {
+        return (
+            <div className="p-8 text-center flex items-center justify-center h-full">
+                <div>
+                    <h2 className="text-2xl font-bold text-red-600">Access Denied</h2>
+                    <p className="text-gray-600 mt-2">You do not have permission to view this page.</p>
+                </div>
+            </div>
+        );
+    }
+
     switch(activeView) {
       case 'dashboard':
         return <Dashboard sales={sales} customers={customers} />;
@@ -78,13 +141,18 @@ const App: React.FC = () => {
       case 'customers':
         return <CustomerManagement customers={customers} addOrUpdateCustomer={addOrUpdateCustomer}/>;
       default:
+        // This default case should ideally not be reached if logic is correct
         return <Dashboard sales={sales} customers={customers} />;
     }
+  }
+  
+  if (!currentUser) {
+    return <Login onLoginSuccess={handleLogin} />;
   }
 
   return (
     <div className="flex bg-slate-100 h-screen overflow-hidden">
-      <Sidebar setView={setActiveView} currentView={activeView} />
+      <Sidebar setView={setActiveView} currentView={activeView} user={currentUser} onLogout={handleLogout} />
       <main className="flex-1 min-h-screen overflow-y-auto">
         {renderView()}
       </main>

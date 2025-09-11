@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, CartItem } from '../types';
 import Card from './ui/Card';
 import Input from './ui/Input';
@@ -29,15 +29,25 @@ const countGuests = (items: CartItem[]): number => {
     return guestIds.size;
 }
 
-const ReceiptModal: React.FC<{ sale: Sale, onClose: () => void }> = ({ sale, onClose }) => {
+const ReceiptModal: React.FC<{ sale: Sale, onClose: () => void, shouldPrint: boolean }> = ({ sale, onClose, shouldPrint }) => {
     const handlePrint = () => {
         // The print styles in index.html will handle showing only the receipt
         window.print();
     };
 
+    useEffect(() => {
+        if (shouldPrint) {
+            // Use a small timeout to ensure the modal content is fully rendered before printing
+            const timer = setTimeout(() => {
+                handlePrint();
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [shouldPrint, sale]);
+
     return (
         <Modal isOpen={!!sale} onClose={onClose} title="Print Receipt" size="sm">
-            <div id="receipt-to-print" className="p-4 bg-white text-black font-mono text-sm">
+            <div id="receipt-to-print" className="p-4 bg-white text-black font-mono text-xs mx-auto max-w-xs">
                 <div className="text-center mb-4">
                     <h2 className="font-bold text-lg">Jump India Fun Zone</h2>
                     <p>Mumbai, India</p>
@@ -110,6 +120,12 @@ const History: React.FC<{ sales: Sale[] }> = ({ sales }) => {
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [saleToPrint, setSaleToPrint] = useState<Sale | null>(null);
+  const [printTrigger, setPrintTrigger] = useState(false);
+
+  const handleCloseModal = () => {
+    setSaleToPrint(null);
+    setPrintTrigger(false); // Reset trigger on close to allow re-printing
+  };
 
   const filteredSales = useMemo(() => {
     const start = new Date(startDate);
@@ -200,9 +216,14 @@ const History: React.FC<{ sales: Sale[] }> = ({ sales }) => {
                   <td className="px-6 py-4 font-bold">₹{sale.total.toLocaleString('en-IN')}</td>
                   <td className="px-6 py-4">{sale.paymentMethod}</td>
                    <td className="px-6 py-4">
-                    <Button size="sm" variant="secondary" onClick={() => setSaleToPrint(sale)}>
-                      Receipt
-                    </Button>
+                     <div className="flex items-center gap-2">
+                        <Button size="sm" variant="primary" onClick={() => {
+                            setPrintTrigger(true);
+                            setSaleToPrint(sale);
+                        }}>
+                          Print
+                        </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -215,7 +236,7 @@ const History: React.FC<{ sales: Sale[] }> = ({ sales }) => {
           </table>
         </div>
       </Card>
-      {saleToPrint && <ReceiptModal sale={saleToPrint} onClose={() => setSaleToPrint(null)} />}
+      {saleToPrint && <ReceiptModal sale={saleToPrint} onClose={handleCloseModal} shouldPrint={printTrigger} />}
     </div>
   );
 };

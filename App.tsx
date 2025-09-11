@@ -77,6 +77,10 @@ const App: React.FC = () => {
   const deleteUser = (code: string) => {
     setUsers(prev => prev.filter(user => user.code !== code));
   };
+  
+  const updateUser = (originalCode: string, updatedUserData: User) => {
+    setUsers(prev => prev.map(user => user.code === originalCode ? updatedUserData : user));
+  };
 
   const Sidebar: React.FC<{ 
     setView: (view: View) => void; 
@@ -157,7 +161,7 @@ const App: React.FC = () => {
       case 'customers':
         return <CustomerManagement customers={customers} addOrUpdateCustomer={addOrUpdateCustomer}/>;
       case 'staff':
-        return <StaffManagement users={users} addUser={addUser} deleteUser={deleteUser} />;
+        return <StaffManagement users={users} addUser={addUser} deleteUser={deleteUser} updateUser={updateUser} />;
       default:
         // This default case should ideally not be reached if logic is correct
         return <Dashboard sales={sales} customers={customers} />;

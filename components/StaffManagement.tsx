@@ -3,21 +3,35 @@ import { User, Role } from '../auth';
 import Card from './ui/Card';
 import Input from './ui/Input';
 import Button from './ui/Button';
+import Modal from './ui/Modal';
 
 interface StaffManagementProps {
   users: User[];
   addUser: (user: User) => void;
   deleteUser: (code: string) => void;
+  updateUser: (originalCode: string, updatedUser: User) => void;
 }
 
-const StaffManagement: React.FC<StaffManagementProps> = ({ users, addUser, deleteUser }) => {
+const StaffManagement: React.FC<StaffManagementProps> = ({ users, addUser, deleteUser, updateUser }) => {
   const [newUser, setNewUser] = useState({ name: '', role: 'staff' as Role, code: '' });
   const [error, setError] = useState('');
+  
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editFormData, setEditFormData] = useState({ name: '', role: 'staff' as Role, code: '' });
+  const [editError, setEditError] = useState('');
+
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setNewUser(prev => ({ ...prev, [name]: value }));
     setError('');
+  };
+  
+  const handleEditInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setEditFormData(prev => ({ ...prev, [name]: value }));
+    setEditError('');
   };
 
   const handleAddUser = (e: React.FormEvent) => {
@@ -38,6 +52,45 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ users, addUser, delet
     addUser(newUser);
     setNewUser({ name: '', role: 'staff', code: '' });
     setError('');
+  };
+  
+  const handleOpenEditModal = (user: User) => {
+    setEditingUser(user);
+    setEditFormData({ name: user.name, role: user.role, code: '' }); // Clear code for security
+    setIsEditModalOpen(true);
+    setEditError('');
+  };
+
+  const handleUpdateUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+
+    if (!editFormData.name) {
+        setEditError('Name cannot be empty.');
+        return;
+    }
+
+    if (editFormData.code && editFormData.code.length < 4) {
+        setEditError('New access code must be at least 4 characters long.');
+        return;
+    }
+
+    if (editFormData.code && users.some(u => u.code === editFormData.code && u.code !== editingUser.code)) {
+        setEditError('This access code is already in use by another user.');
+        return;
+    }
+
+    const updatedUser: User = {
+      ...editingUser,
+      name: editFormData.name,
+      role: editFormData.role,
+      code: editFormData.code || editingUser.code, // Keep original code if new one isn't provided
+    };
+    
+    updateUser(editingUser.code, updatedUser);
+
+    setIsEditModalOpen(false);
+    setEditingUser(null);
   };
 
   const handleDeleteUser = (code: string) => {
@@ -114,7 +167,15 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ users, addUser, delet
                     <td className="px-6 py-4 font-medium text-gray-900">{user.name}</td>
                     <td className="px-6 py-4 capitalize">{user.role}</td>
                     <td className="px-6 py-4 font-mono">****</td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 flex items-center gap-2">
+                       <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleOpenEditModal(user)}
+                        disabled={user.code === '1111'}
+                      >
+                        Edit
+                      </Button>
                       <Button
                         variant="danger"
                         size="sm"
@@ -131,6 +192,49 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ users, addUser, delet
           </div>
         </Card>
       </div>
+      
+      {editingUser && (
+        <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={`Edit User: ${editingUser.name}`}>
+            <form onSubmit={handleUpdateUser} className="space-y-4">
+                <Input
+                    label="Full Name"
+                    id="edit-name"
+                    name="name"
+                    value={editFormData.name}
+                    onChange={handleEditInputChange}
+                    required
+                />
+                <div>
+                    <label htmlFor="edit-role" className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                    <select
+                        id="edit-role"
+                        name="role"
+                        value={editFormData.role}
+                        onChange={handleEditInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    >
+                        <option value="staff">Staff</option>
+                        <option value="manager">Manager</option>
+                    </select>
+                </div>
+                <Input
+                    label="New Access Code (Optional)"
+                    id="edit-code"
+                    name="code"
+                    type="password"
+                    value={editFormData.code}
+                    onChange={handleEditInputChange}
+                    placeholder="Leave blank to keep current code"
+                    minLength={4}
+                />
+                {editError && <p className="text-sm text-red-600">{editError}</p>}
+                <div className="flex justify-end gap-3 pt-4">
+                    <Button type="button" variant="secondary" onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
+                    <Button type="submit">Save Changes</Button>
+                </div>
+            </form>
+        </Modal>
+      )}
     </div>
   );
 };

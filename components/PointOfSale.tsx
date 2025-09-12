@@ -10,6 +10,7 @@ import { getWaiverStatus } from '../utils/waiverUtils';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { getTransactionSuggestion } from '../services/geminiService';
 import Spinner from './ui/Spinner';
+import { User } from '../auth';
 
 
 interface PointOfSaleProps {
@@ -18,6 +19,8 @@ interface PointOfSaleProps {
   addSale: (sale: Sale) => void;
   addOrUpdateCustomer: (customer: Customer) => void;
   activeCashDrawerSession: CashDrawerSession | undefined;
+  currentUser: User;
+  onMakeDeposit: () => void;
 }
 
 const ProductCard: React.FC<{ product: Product; onClick: () => void; disabled: boolean }> = ({ product, onClick, disabled }) => (
@@ -33,7 +36,7 @@ const ProductCard: React.FC<{ product: Product; onClick: () => void; disabled: b
 );
 
 
-const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, activeCashDrawerSession }) => {
+const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, activeCashDrawerSession, currentUser, onMakeDeposit }) => {
   const [customerSearch, setCustomerSearch] = useState('');
   const [searchMessage, setSearchMessage] = useState<{type: 'error' | 'info', text: string} | null>(null);
   
@@ -451,6 +454,11 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
               >
                 Pending Orders ({transactions.filter(t => t.id !== activeTransactionId).length})
             </Button>
+            {['admin', 'manager'].includes(currentUser.role) && activeCashDrawerSession && (
+                <Button size="sm" variant="secondary" className="!bg-yellow-500 hover:!bg-yellow-600 !text-white" onClick={onMakeDeposit}>
+                    Make Deposit
+                </Button>
+            )}
           </div>
           <div className="flex-1 max-w-lg mx-4">
              <Input 

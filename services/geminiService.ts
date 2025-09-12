@@ -73,7 +73,8 @@ Your response MUST be in a valid JSON format with two keys: "suggestedBalance" (
 export const getDiscrepancyAnalysis = async (session: CashDrawerSession, cashSalesForSession: Sale[]): Promise<string> => {
   try {
     const cashSalesTotal = cashSalesForSession.reduce((sum, sale) => sum + sale.total, 0);
-    const expectedBalance = session.openingBalance + cashSalesTotal;
+    const totalDeposits = session.deposits?.reduce((sum, deposit) => sum + deposit.amount, 0) || 0;
+    const expectedBalance = session.openingBalance + cashSalesTotal - totalDeposits;
     const discrepancy = (session.closingBalance || 0) - expectedBalance;
 
     const summarizeCart = (items: CartItem[]): string => {
@@ -85,23 +86,32 @@ export const getDiscrepancyAnalysis = async (session: CashDrawerSession, cashSal
             .map(([name, count]) => `${name}${count > 1 ? ` (x${count})` : ''}`)
             .join(', ');
     };
+    
+    const depositDetails = session.deposits && session.deposits.length > 0
+        ? session.deposits.map(d => `- A deposit of ₹${d.amount.toFixed(2)} was made.`).join('\n')
+        : 'No cash deposits were made.';
 
     const prompt = `You are an intelligent financial auditor for a Point-of-Sale system. Your task is to analyze a cash drawer session that has a discrepancy and provide a concise, professional summary that offers a clear starting point for an investigation.
 
 Here is the data for the session:
 - Opening Balance: ₹${session.openingBalance.toFixed(2)}
+- Total Cash Sales: ₹${cashSalesTotal.toFixed(2)}
+- Total Cash Deposits: ₹${totalDeposits.toFixed(2)}
+- Expected Closing Balance (Opening + Sales - Deposits): ₹${expectedBalance.toFixed(2)}
 - Counted Closing Balance: ₹${(session.closingBalance || 0).toFixed(2)}
-- Expected Closing Balance (Opening Balance + Cash Sales): ₹${expectedBalance.toFixed(2)}
 - Discrepancy: ₹${discrepancy.toFixed(2)} (${discrepancy >= 0.01 ? 'Over' : 'Short'})
 - Reason provided by staff: "${session.discrepancyReason || 'No reason provided.'}"
+
+Here is a list of cash deposits made during this shift:
+${depositDetails}
 
 Here is a list of all cash transactions during this shift:
 ${cashSalesForSession.length > 0 ? cashSalesForSession.map(sale => `- Sale ID ${sale.id.slice(-6)}: A cash sale of ₹${sale.total.toFixed(2)} for: ${summarizeCart(sale.items)}`).join('\n') : 'No cash sales were recorded.'}
 
 Based on all this information, provide a professional summary of what might have caused the discrepancy.
-- Synthesize the staff's reason with the cash transaction data into a helpful narrative.
-- Your primary goal is to identify and **list the specific cash transaction(s) that most likely relate to the staff's reason for the discrepancy.**
-- For instance, if the reason mentions paying for an item, look for transactions of a similar value.
+- **Crucially, you must consider cash deposits as a primary reason for cash leaving the drawer.**
+- Synthesize the staff's reason with the cash transaction and deposit data into a helpful narrative.
+- Your primary goal is to identify and list the specific cash transaction(s) that most likely relate to the staff's reason for the discrepancy.
 - Your tone should be neutral and analytical.
 
 Example Analysis:

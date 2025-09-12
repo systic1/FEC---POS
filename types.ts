@@ -1,3 +1,5 @@
+import { User } from './auth';
+
 export interface Customer {
   id: string;
   name: string;
@@ -57,6 +59,14 @@ export interface Transaction {
   discount: { type: 'percentage' | 'fixed'; value: number };
 }
 
+export interface CashDeposit {
+  id: string;
+  amount: number;
+  timestamp: string;
+  userId: string;
+  notes?: string;
+}
+
 export interface CashDrawerSession {
   id: string;
   openingTime: string;
@@ -73,4 +83,5 @@ export interface CashDrawerSession {
     type: string;
     data: string; // base64 data URL
   };
+  deposits?: CashDeposit[];
 }

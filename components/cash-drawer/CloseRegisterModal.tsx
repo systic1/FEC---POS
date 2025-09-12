@@ -36,7 +36,7 @@ const CloseRegisterModal: React.FC<CloseRegisterModalProps> = ({ onClose, onSess
   const [attachment, setAttachment] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { totalCashSales, expectedBalance } = useMemo(() => {
+  const { totalCashSales, expectedBalance, totalDeposits } = useMemo(() => {
     const sessionSales = sales.filter(sale => {
       const saleDate = new Date(sale.date);
       return new Date(session.openingTime) <= saleDate && (session.closingTime ? saleDate <= new Date(session.closingTime) : true);
@@ -45,10 +45,13 @@ const CloseRegisterModal: React.FC<CloseRegisterModalProps> = ({ onClose, onSess
     const cashSales = sessionSales
       .filter(sale => sale.paymentMethod === 'Cash')
       .reduce((sum, sale) => sum + sale.total, 0);
+    
+    const deposits = session.deposits?.reduce((sum, d) => sum + d.amount, 0) || 0;
 
     return {
       totalCashSales: cashSales,
-      expectedBalance: session.openingBalance + cashSales,
+      totalDeposits: deposits,
+      expectedBalance: session.openingBalance + cashSales - deposits,
     };
   }, [session, sales]);
   
@@ -110,6 +113,10 @@ const CloseRegisterModal: React.FC<CloseRegisterModalProps> = ({ onClose, onSess
                     <span className="font-medium text-gray-600">Total Cash Sales:</span>
                     <span className="font-semibold text-gray-800">₹{totalCashSales.toLocaleString('en-IN')}</span>
                 </div>
+                 <div className="flex justify-between text-sm">
+                    <span className="font-medium text-gray-600">Total Deposits:</span>
+                    <span className="font-semibold text-red-600">- ₹{totalDeposits.toLocaleString('en-IN')}</span>
+                </div>
                 <hr/>
                 <div className="flex justify-between font-bold text-base">
                     <span>Expected in Drawer:</span>
@@ -130,7 +137,7 @@ const CloseRegisterModal: React.FC<CloseRegisterModalProps> = ({ onClose, onSess
             />
 
             <div className="p-4 bg-blue-50 rounded-lg">
-                 <div className={`flex justify-between font-bold text-lg ${discrepancy < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                 <div className={`flex justify-between font-bold text-lg ${discrepancy < -0.01 ? 'text-red-600' : (discrepancy > 0.01 ? 'text-green-600' : 'text-gray-800')}`}>
                     <span>Discrepancy:</span>
                     <span>
                         {discrepancy.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}

@@ -34,24 +34,30 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users, 
 
   const handleViewDetails = async (session: CashDrawerSession) => {
     setDetailsSession(session);
-    setCurrentAnalysis(null);
-    setIsAnalysisLoading(true);
+    
+    const hasDiscrepancy = session.closingBalance !== null && 
+        (session.discrepancyReason || session.openingBalanceDiscrepancyReason);
 
-    const salesForSession = sales.filter(sale => {
-      const saleDate = new Date(sale.date);
-      const openingTime = new Date(session.openingTime);
-      const closingTime = session.closingTime ? new Date(session.closingTime) : new Date();
-      return sale.paymentMethod === 'Cash' && saleDate >= openingTime && saleDate <= closingTime;
-    });
+    if (hasDiscrepancy) {
+        setCurrentAnalysis(null);
+        setIsAnalysisLoading(true);
 
-    try {
-        const analysis = await getDiscrepancyAnalysis(session, salesForSession);
-        setCurrentAnalysis(analysis);
-    } catch (error) {
-        console.error("Failed to get analysis:", error);
-        setCurrentAnalysis("Could not load AI analysis. Please try again.");
-    } finally {
-        setIsAnalysisLoading(false);
+        const salesForSession = sales.filter(sale => {
+          const saleDate = new Date(sale.date);
+          const openingTime = new Date(session.openingTime);
+          const closingTime = session.closingTime ? new Date(session.closingTime) : new Date();
+          return sale.paymentMethod === 'Cash' && saleDate >= openingTime && saleDate <= closingTime;
+        });
+
+        try {
+            const analysis = await getDiscrepancyAnalysis(session, salesForSession);
+            setCurrentAnalysis(analysis);
+        } catch (error) {
+            console.error("Failed to get analysis:", error);
+            setCurrentAnalysis("Could not load AI analysis. Please try again.");
+        } finally {
+            setIsAnalysisLoading(false);
+        }
     }
   };
 
@@ -68,6 +74,7 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users, 
                 <th scope="col" className="px-6 py-3">Status</th>
                 <th scope="col" className="px-6 py-3">Opened By</th>
                 <th scope="col" className="px-6 py-3 text-right">Opening</th>
+                <th scope="col" className="px-6 py-3 text-right">Deposits</th>
                 <th scope="col" className="px-6 py-3 text-right">Closing</th>
                 <th scope="col" className="px-6 py-3 text-right">Discrepancy</th>
                 <th scope="col" className="px-6 py-3">Notes & Analysis</th>
@@ -83,7 +90,8 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users, 
                     .filter(sale => sale.paymentMethod === 'Cash')
                     .reduce((sum, sale) => sum + sale.total, 0);
                 
-                const expectedBalance = session.openingBalance + totalCashSales;
+                const totalDeposits = session.deposits?.reduce((sum, d) => sum + d.amount, 0) || 0;
+                const expectedBalance = session.openingBalance + totalCashSales - totalDeposits;
                 const discrepancy = session.closingBalance !== null ? session.closingBalance - expectedBalance : null;
                  
                  let discrepancyColor = 'text-gray-900';
@@ -113,6 +121,7 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users, 
                     </td>
                     <td className="px-6 py-4">{getUserName(session.openedByUserId)}</td>
                     <td className="px-6 py-4 text-right">₹{session.openingBalance.toLocaleString('en-IN')}</td>
+                    <td className="px-6 py-4 text-right">₹{totalDeposits.toLocaleString('en-IN')}</td>
                     <td className="px-6 py-4 text-right">
                         {session.closingBalance !== null ? `₹${session.closingBalance.toLocaleString('en-IN')}` : 'N/A'}
                     </td>
@@ -120,7 +129,7 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users, 
                         {discrepancy !== null ? `₹${discrepancy.toLocaleString('en-IN')}` : 'N/A'}
                     </td>
                     <td className="px-6 py-4">
-                      {(discrepancy !== null && Math.abs(discrepancy) > 0.01) && (
+                      {(session.discrepancyReason || session.openingBalanceDiscrepancyReason || session.deposits?.length) && (
                         <Button size="sm" variant="secondary" onClick={() => handleViewDetails(session)}>
                           View
                         </Button>
@@ -131,7 +140,7 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users, 
               })}
                {sortedSessions.length === 0 && (
                   <tr>
-                      <td colSpan={7} className="text-center py-10 text-gray-500">No cash drawer sessions found.</td>
+                      <td colSpan={8} className="text-center py-10 text-gray-500">No cash drawer sessions found.</td>
                   </tr>
               )}
             </tbody>
@@ -140,12 +149,14 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users, 
       </Card>
 
       {detailsSession && (
-        <Modal isOpen={true} onClose={handleCloseModal} title="Discrepancy Note & Analysis">
+        <Modal isOpen={true} onClose={handleCloseModal} title="Session Details & Analysis">
             <div className="space-y-4">
-                <div>
-                    <h4 className="font-semibold text-gray-700">Staff Note:</h4>
-                    <p className="p-2 bg-gray-100 rounded-md mt-1 whitespace-pre-wrap">{detailsSession.discrepancyReason || 'No reason was provided.'}</p>
-                </div>
+                {detailsSession.discrepancyReason && (
+                    <div>
+                        <h4 className="font-semibold text-gray-700">Note on Closing Discrepancy:</h4>
+                        <p className="p-2 bg-gray-100 rounded-md mt-1 whitespace-pre-wrap">{detailsSession.discrepancyReason}</p>
+                    </div>
+                )}
                  {detailsSession.openingBalanceDiscrepancyReason && (
                      <div>
                         <h4 className="font-semibold text-gray-700">Note on Opening Balance:</h4>
@@ -164,6 +175,19 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users, 
                         </a>
                     </div>
                 )}
+                {detailsSession.deposits && detailsSession.deposits.length > 0 && (
+                    <div>
+                        <h4 className="font-semibold text-gray-700">Cash Deposits Made:</h4>
+                        <ul className="list-disc list-inside mt-1 space-y-1 text-sm bg-gray-100 p-2 rounded-md">
+                            {detailsSession.deposits.map(deposit => (
+                                <li key={deposit.id}>
+                                    ₹{deposit.amount.toLocaleString()} by {getUserName(deposit.userId)} on {new Date(deposit.timestamp).toLocaleDateString()}
+                                    {deposit.notes && <p className="pl-5 text-xs text-gray-500 italic">Note: {deposit.notes}</p>}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
                 <hr />
                  <div>
                     <h4 className="font-semibold text-gray-700">AI Auditor Analysis:</h4>
@@ -174,7 +198,7 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users, 
                                 <span>Analyzing...</span>
                             </div>
                         ) : (
-                            <p className="text-sm text-blue-800">{currentAnalysis || 'No analysis available.'}</p>
+                            <p className="text-sm text-blue-800">{currentAnalysis || 'No analysis available for this session.'}</p>
                         )}
                     </div>
                 </div>

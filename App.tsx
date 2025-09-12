@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Customer, Sale, CashDrawerSession } from './types';
+import { Customer, Sale, CashDrawerSession, CashDeposit } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
 import Dashboard from './components/Dashboard';
 import PointOfSale from './components/PointOfSale';
@@ -13,6 +13,7 @@ import OpenRegisterModal from './components/cash-drawer/OpenRegisterModal';
 import CloseRegisterModal from './components/cash-drawer/CloseRegisterModal';
 import CashDrawerHistory from './components/cash-drawer/CashDrawerHistory';
 import { getOpeningBalanceSuggestion, OpeningBalanceSuggestion } from './services/geminiService';
+import CashDepositModal from './components/cash-drawer/CashDepositModal';
 
 type View = 'dashboard' | 'sale' | 'history' | 'customers' | 'staff' | 'cashdrawer';
 
@@ -36,6 +37,7 @@ const App: React.FC = () => {
   
   const [isClosingRegister, setIsClosingRegister] = useState(false);
   const [isOpeningRegister, setIsOpeningRegister] = useState(false);
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   
   const [openingSuggestion, setOpeningSuggestion] = useState<OpeningBalanceSuggestion | null>(null);
   const [isSuggestionLoading, setIsSuggestionLoading] = useState(false);
@@ -110,6 +112,7 @@ const App: React.FC = () => {
         openedByUserId: currentUser.code,
         closedByUserId: null,
         status: 'OPEN',
+        deposits: [],
     };
     setCashDrawerSessions(prev => [...prev, newSession]);
     setIsOpeningRegister(false);
@@ -139,6 +142,26 @@ const App: React.FC = () => {
     );
     setIsClosingRegister(false);
     setCurrentUser(null); // Log out after closing register
+  };
+
+  const addCashDeposit = (amount: number, notes?: string) => {
+    if (!currentUser || !activeCashDrawerSession) return;
+    const newDeposit: CashDeposit = {
+      id: `dep_${new Date().getTime()}`,
+      amount,
+      timestamp: new Date().toISOString(),
+      userId: currentUser.code,
+      ...(notes && { notes }),
+    };
+
+    setCashDrawerSessions(prev =>
+      prev.map(s =>
+        s.id === activeCashDrawerSession.id
+          ? { ...s, deposits: [...(s.deposits || []), newDeposit] }
+          : s
+      )
+    );
+    setIsDepositModalOpen(false);
   };
 
   const addSale = useCallback((sale: Sale) => {
@@ -261,7 +284,7 @@ const App: React.FC = () => {
       case 'dashboard':
         return <Dashboard sales={sales} customers={customers} />;
       case 'sale':
-        return <PointOfSale sales={sales} customers={customers} addSale={addSale} addOrUpdateCustomer={addOrUpdateCustomer} activeCashDrawerSession={activeCashDrawerSession} />;
+        return <PointOfSale sales={sales} customers={customers} addSale={addSale} addOrUpdateCustomer={addOrUpdateCustomer} activeCashDrawerSession={activeCashDrawerSession} currentUser={currentUser} onMakeDeposit={() => setIsDepositModalOpen(true)} />;
       case 'history':
         return <History sales={sales} />;
       case 'customers':
@@ -301,6 +324,16 @@ const App: React.FC = () => {
             session={activeCashDrawerSession!}
             sales={sales}
             currentUser={currentUser}
+        />
+      )}
+       {isDepositModalOpen && activeCashDrawerSession && (
+        <CashDepositModal
+          isOpen={isDepositModalOpen}
+          onClose={() => setIsDepositModalOpen(false)}
+          onConfirmDeposit={addCashDeposit}
+          session={activeCashDrawerSession}
+          sales={sales}
+          currentUser={currentUser}
         />
       )}
     </div>

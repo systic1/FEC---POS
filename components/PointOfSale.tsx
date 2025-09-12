@@ -43,7 +43,6 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
   const [transactions, setTransactions] = useLocalStorage<Transaction[]>('pendingTransactions', []);
   const [activeTransactionId, setActiveTransactionId] = useLocalStorage<string | null>('activeTransactionId', null);
 
-  const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
   const [isAssignWaiverModalOpen, setAssignWaiverModalOpen] = useState(false);
   const [isPendingOrdersModalOpen, setPendingOrdersModalOpen] = useState(false);
   
@@ -55,6 +54,10 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
 
   const [isApplyingDiscount, setIsApplyingDiscount] = useState(false);
   const [discountInput, setDiscountInput] = useState({ type: 'fixed', value: '' });
+
+  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'payment'>('cart');
+  const [cashTendered, setCashTendered] = useState('');
+
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000); // Update time every minute
@@ -107,6 +110,9 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
   const resetAfterSale = () => {
     setTransactions(prev => prev.filter(t => t.id !== activeTransactionId));
     setActiveTransactionId(null);
+    setCheckoutStep('cart');
+    setCashTendered('');
+    setPaymentMethod('GPay');
   }
 
   const handleCustomerSearch = (term?: string) => {
@@ -292,18 +298,6 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
     setAssignWaiverModalOpen(false);
   };
 
-  const handleCheckout = () => {
-    if (!activeTransaction || activeTransaction.cart.length === 0) {
-        alert("Cart is empty.");
-        return;
-    }
-    if (paymentMethod === 'Cash' && !activeCashDrawerSession) {
-        alert("Cannot process cash sale. The register is closed.");
-        return;
-    }
-    setCheckoutModalOpen(true);
-  };
-
   const handleProcessPayment = () => {
     if (!activeTransaction || !canCheckout) return;
     
@@ -325,8 +319,18 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
         date: new Date().toISOString(),
         paymentMethod,
     };
+
+    if (paymentMethod === 'Cash') {
+        const tendered = parseFloat(cashTendered);
+        if (isNaN(tendered) || tendered < grandTotal) {
+            alert("Tendered cash is less than the total amount.");
+            return;
+        }
+        newSale.cashTendered = tendered;
+        newSale.changeGiven = tendered - grandTotal;
+    }
+
     addSale(newSale);
-    setCheckoutModalOpen(false);
     resetAfterSale();
   }
   
@@ -431,6 +435,13 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
         
     return customerSales.length > 0 ? new Date(customerSales[0].date).toLocaleDateString() : 'First Visit';
   }, [sales, activeTransaction]);
+
+  const changeToGive = useMemo(() => {
+      if (paymentMethod !== 'Cash' || !cashTendered) return 0;
+      const tendered = parseFloat(cashTendered);
+      if (isNaN(tendered) || tendered < grandTotal) return 0;
+      return tendered - grandTotal;
+  }, [cashTendered, grandTotal, paymentMethod]);
 
 
   return (
@@ -620,84 +631,111 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
         {/* Footer with totals and checkout */}
         {activeTransaction && (
             <div className="p-4 border-t bg-white">
-                <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                        <span>Subtotal</span>
-                        <span>₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              {checkoutStep === 'cart' ? (
+                <>
+                    <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                            <span>Subtotal</span>
+                            <span>₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                         <div className="flex justify-between items-center">
+                            <span>Discount</span>
+                            {discountAmount > 0 ? (
+                                 <div className="flex items-center gap-2">
+                                    <span>- ₹{discountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                    <button onClick={handleRemoveDiscount} className="text-red-500">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+                                    </button>
+                                </div>
+                            ) : (
+                                 <Button size="sm" variant="secondary" onClick={() => setIsApplyingDiscount(true)}>Apply Discount</Button>
+                            )}
+                        </div>
+                        <div className="flex justify-between">
+                            <span>GST (18%)</span>
+                            <span>₹{gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <hr/>
+                        <div className="flex justify-between font-bold text-lg text-gray-800">
+                            <span>Grand Total</span>
+                            <span>₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        </div>
                     </div>
-                     <div className="flex justify-between items-center">
-                        <span>Discount</span>
-                        {discountAmount > 0 ? (
-                             <div className="flex items-center gap-2">
-                                <span>- ₹{discountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                                <button onClick={handleRemoveDiscount} className="text-red-500">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
-                                </button>
+                    <div className="mt-4">
+                        {!canCheckout && activeTransaction.cart.length > 0 && (
+                            <div className="text-xs text-red-600 bg-red-50 p-2 rounded-md mb-2">
+                                All jump tickets and memberships must be assigned to a guest with a valid waiver before checkout.
                             </div>
-                        ) : (
-                             <Button size="sm" variant="secondary" onClick={() => setIsApplyingDiscount(true)}>Apply Discount</Button>
                         )}
+                        <Button 
+                            size="lg" 
+                            variant="success" 
+                            className="w-full"
+                            onClick={() => setCheckoutStep('payment')}
+                            disabled={!canCheckout}
+                        >
+                            Proceed to Payment
+                        </Button>
                     </div>
-                    <div className="flex justify-between">
-                        <span>GST (18%)</span>
-                        <span>₹{gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </>
+              ) : (
+                <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-lg font-bold">Payment</h3>
+                        <Button variant="secondary" size="sm" onClick={() => setCheckoutStep('cart')}>Back to Cart</Button>
                     </div>
-                    <hr/>
-                    <div className="flex justify-between font-bold text-lg text-gray-800">
-                        <span>Grand Total</span>
-                        <span>₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    <div className="p-4 bg-gray-100 rounded-lg text-center">
+                        <p className="text-sm text-gray-600">Amount to be Paid</p>
+                        <p className="text-3xl font-bold text-gray-800">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                     </div>
-                </div>
-                <div className="mt-4">
-                    {!canCheckout && activeTransaction.cart.length > 0 && (
-                        <div className="text-xs text-red-600 bg-red-50 p-2 rounded-md mb-2">
-                            All jump tickets and memberships must be assigned to a guest with a valid waiver before checkout.
+                    <div>
+                        <p className="text-sm font-medium text-gray-700 mb-2">Select Payment Method</p>
+                        <div className="grid grid-cols-3 gap-2">
+                            {(['GPay', 'PhonePe', 'Paytm', 'Card', 'Cash'] as const).map(method => (
+                                <button key={method} onClick={() => setPaymentMethod(method)} className={`p-2 rounded-md text-sm font-semibold border-2 transition-colors ${paymentMethod === method ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-100 border-gray-300'}`}>
+                                    {method}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    
+                    {paymentMethod === 'Cash' && (
+                        <div className="space-y-3 pt-3 border-t">
+                            <Input 
+                                label="Cash Tendered"
+                                id="cash-tendered"
+                                type="number"
+                                placeholder="Amount from customer"
+                                value={cashTendered}
+                                onChange={e => setCashTendered(e.target.value)}
+                                autoFocus
+                            />
+                            <div className="flex justify-between font-bold text-lg text-green-600">
+                                <span>Change to Give:</span>
+                                <span>₹{changeToGive.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                            </div>
                         </div>
                     )}
+                    
                     <Button 
                         size="lg" 
                         variant="success" 
-                        className="w-full"
-                        onClick={handleCheckout}
-                        disabled={!canCheckout}
+                        className="w-full mt-4"
+                        onClick={handleProcessPayment} 
+                        disabled={(paymentMethod === 'Cash' && (!cashTendered || parseFloat(cashTendered) < grandTotal)) || (paymentMethod === 'Cash' && !activeCashDrawerSession)}
                     >
-                        Checkout (₹{grandTotal.toFixed(2)})
+                        Process Payment
                     </Button>
+                     {paymentMethod === 'Cash' && !activeCashDrawerSession && (
+                        <p className="text-red-500 text-xs text-center mt-1">Cannot accept cash. Register is closed.</p>
+                     )}
                 </div>
+              )}
             </div>
         )}
       </aside>
 
       {/* Modals */}
-      {isCheckoutModalOpen && (
-        <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Complete Payment">
-            <div className="space-y-4">
-                <h3 className="text-2xl font-bold text-center">Total: ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</h3>
-                <div className="flex justify-center gap-2 flex-wrap">
-                    {(['GPay', 'PhonePe', 'Paytm', 'Card', 'Cash'] as const).map(method => (
-                        <Button key={method} variant={paymentMethod === method ? 'primary' : 'secondary'} onClick={() => setPaymentMethod(method)}>
-                            {method}
-                        </Button>
-                    ))}
-                </div>
-                 {paymentMethod === 'Cash' && !activeCashDrawerSession && (
-                    <p className="text-red-500 text-sm text-center">Cannot accept cash. Register is closed.</p>
-                 )}
-                <div className="mt-6 flex justify-end">
-                     <Button 
-                        size="lg" 
-                        variant="success" 
-                        onClick={handleProcessPayment} 
-                        className="w-full"
-                        disabled={paymentMethod === 'Cash' && !activeCashDrawerSession}
-                    >
-                        Process Payment
-                    </Button>
-                </div>
-            </div>
-        </Modal>
-      )}
-
       {isAssignWaiverModalOpen && activeTransaction && (
           <BulkAssignWaiverModal 
             isOpen={isAssignWaiverModalOpen}

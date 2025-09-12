@@ -91,6 +91,18 @@ export const getDiscrepancyAnalysis = async (session: CashDrawerSession, cashSal
         ? session.deposits.map(d => `- A deposit of ₹${d.amount.toFixed(2)} was made.`).join('\n')
         : 'No cash deposits were made.';
 
+    const cashTransactionDetails = cashSalesForSession.length > 0
+        ? cashSalesForSession.map(sale => {
+            let details = `- Sale ID ${sale.id.slice(-6)}: A cash sale of ₹${sale.total.toFixed(2)}`;
+            if (sale.paymentMethod === 'Cash' && sale.cashTendered !== undefined && sale.changeGiven !== undefined) {
+                details += ` (Customer Paid: ₹${sale.cashTendered.toFixed(2)}, Change Given: ₹${sale.changeGiven.toFixed(2)})`;
+            }
+            details += ` for: ${summarizeCart(sale.items)}`;
+            return details;
+        }).join('\n')
+        : 'No cash sales were recorded.';
+
+
     const prompt = `You are an intelligent financial auditor for a Point-of-Sale system. Your task is to analyze a cash drawer session that has a discrepancy and provide a concise, professional summary that offers a clear starting point for an investigation.
 
 Here is the data for the session:
@@ -106,10 +118,10 @@ Here is a list of cash deposits made during this shift:
 ${depositDetails}
 
 Here is a list of all cash transactions during this shift:
-${cashSalesForSession.length > 0 ? cashSalesForSession.map(sale => `- Sale ID ${sale.id.slice(-6)}: A cash sale of ₹${sale.total.toFixed(2)} for: ${summarizeCart(sale.items)}`).join('\n') : 'No cash sales were recorded.'}
+${cashTransactionDetails}
 
 Based on all this information, provide a professional summary of what might have caused the discrepancy.
-- **Crucially, you must consider cash deposits as a primary reason for cash leaving the drawer.**
+- **Crucially, you must consider cash deposits as a primary reason for cash leaving the drawer.** For each cash sale, verify the math: the sale total should equal the amount paid by the customer minus the change given.
 - Synthesize the staff's reason with the cash transaction and deposit data into a helpful narrative.
 - Your primary goal is to identify and list the specific cash transaction(s) that most likely relate to the staff's reason for the discrepancy.
 - Your tone should be neutral and analytical.

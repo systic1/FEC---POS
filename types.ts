@@ -49,6 +49,8 @@ export interface Sale {
   total: number;
   date: string;
   paymentMethod: 'Cash' | 'Card' | 'GPay' | 'PhonePe' | 'Paytm';
+  cashTendered?: number;
+  changeGiven?: number;
 }
 
 export interface Transaction {

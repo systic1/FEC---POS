@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { CashDrawerSession } from '../../types';
 import { User } from '../../auth';
 import Card from '../ui/Card';
+import Modal from '../ui/Modal';
+import Button from '../ui/Button';
 
 interface CashDrawerHistoryProps {
   sessions: CashDrawerSession[];
@@ -9,6 +11,8 @@ interface CashDrawerHistoryProps {
 }
 
 const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users }) => {
+  const [detailsSession, setDetailsSession] = useState<CashDrawerSession | null>(null);
+
   const getUserName = (userId: string | null) => {
     if (!userId) return 'N/A';
     return users.find(u => u.code === userId)?.name || 'Unknown User';
@@ -33,6 +37,7 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users }
                 <th scope="col" className="px-6 py-3 text-right">Opening Balance</th>
                 <th scope="col" className="px-6 py-3 text-right">Closing Balance</th>
                 <th scope="col" className="px-6 py-3 text-right">Discrepancy</th>
+                <th scope="col" className="px-6 py-3">Notes</th>
               </tr>
             </thead>
             <tbody>
@@ -73,18 +78,49 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users }
                     <td className={`px-6 py-4 text-right font-bold ${discrepancyColor}`}>
                         {discrepancy !== null ? `₹${discrepancy.toLocaleString('en-IN')}` : 'N/A'}
                     </td>
+                    <td className="px-6 py-4">
+                      {session.discrepancyReason && (
+                        <Button size="sm" variant="secondary" onClick={() => setDetailsSession(session)}>
+                          View Note
+                        </Button>
+                      )}
+                    </td>
                   </tr>
                 )
               })}
                {sortedSessions.length === 0 && (
                   <tr>
-                      <td colSpan={7} className="text-center py-10 text-gray-500">No cash drawer sessions found.</td>
+                      <td colSpan={8} className="text-center py-10 text-gray-500">No cash drawer sessions found.</td>
                   </tr>
               )}
             </tbody>
           </table>
         </div>
       </Card>
+
+      {detailsSession && (
+        <Modal isOpen={true} onClose={() => setDetailsSession(null)} title="Discrepancy Note">
+            <div className="space-y-4">
+                <div>
+                    <h4 className="font-semibold text-gray-700">Reason Provided:</h4>
+                    <p className="p-2 bg-gray-100 rounded-md mt-1 whitespace-pre-wrap">{detailsSession.discrepancyReason}</p>
+                </div>
+                {detailsSession.discrepancyAttachment && (
+                     <div>
+                        <h4 className="font-semibold text-gray-700">Attachment:</h4>
+                        <a 
+                            href={detailsSession.discrepancyAttachment.data} 
+                            download={detailsSession.discrepancyAttachment.name}
+                            className="text-blue-600 hover:underline mt-1 block"
+                        >
+                            Download {detailsSession.discrepancyAttachment.name}
+                        </a>
+                    </div>
+                )}
+            </div>
+        </Modal>
+      )}
+
     </div>
   );
 };

@@ -7,14 +7,33 @@ import Button from '../ui/Button';
 
 interface CloseRegisterModalProps {
   onClose: () => void;
-  onSessionEnd: (closingBalance: number) => void;
+  onSessionEnd: (
+    closingBalance: number, 
+    reason?: string, 
+    attachment?: { name: string; type: string; data: string }
+  ) => void;
   session: CashDrawerSession;
   sales: Sale[];
   currentUser: User;
 }
 
+const fileToBase64 = (file: File): Promise<{ name: string; type: string; data: string }> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve({
+            name: file.name,
+            type: file.type,
+            data: reader.result as string
+        });
+        reader.onerror = error => reject(error);
+    });
+};
+
 const CloseRegisterModal: React.FC<CloseRegisterModalProps> = ({ onClose, onSessionEnd, session, sales, currentUser }) => {
   const [actualCash, setActualCash] = useState('');
+  const [reason, setReason] = useState('');
+  const [attachment, setAttachment] = useState<File | null>(null);
 
   const { totalCashSales, expectedBalance } = useMemo(() => {
     const sessionSales = sales.filter(sale => {
@@ -35,23 +54,40 @@ const CloseRegisterModal: React.FC<CloseRegisterModalProps> = ({ onClose, onSess
   const discrepancy = useMemo(() => {
     const counted = parseFloat(actualCash);
     if (isNaN(counted)) return 0;
-    return counted - expectedBalance;
+    // Use Math.round to avoid floating point issues
+    return Math.round((counted - expectedBalance) * 100) / 100;
   }, [actualCash, expectedBalance]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const counted = parseFloat(actualCash);
     if (isNaN(counted) || counted < 0) {
       alert('Please enter a valid cash amount.');
       return;
     }
+    if (discrepancy !== 0 && !reason.trim()) {
+        alert('A reason is required for the cash discrepancy.');
+        return;
+    }
+
     const confirmMessage = `You are about to close the register.\n\nDiscrepancy: ₹${discrepancy.toFixed(2)}\n\nThis will log you out. Are you sure?`;
     if (window.confirm(confirmMessage)) {
-      onSessionEnd(counted);
+      let attachmentData;
+      if (attachment) {
+          try {
+              attachmentData = await fileToBase64(attachment);
+          } catch (error) {
+              console.error("Error converting file:", error);
+              alert("Could not process the attachment. Please try again.");
+              return;
+          }
+      }
+      onSessionEnd(counted, reason, attachmentData);
     }
   };
   
   const canClose = session.openedByUserId === currentUser.code || ['admin', 'manager'].includes(currentUser.role);
+  const isSubmitDisabled = !actualCash || (discrepancy !== 0 && !reason.trim());
 
   return (
     <Modal isOpen={true} onClose={onClose} title="End Shift & Close Register">
@@ -101,9 +137,36 @@ const CloseRegisterModal: React.FC<CloseRegisterModalProps> = ({ onClose, onSess
                 </div>
             </div>
 
+            {discrepancy !== 0 && (
+                <div className="space-y-4 pt-4 border-t">
+                    <div>
+                        <label htmlFor="reason" className="block text-sm font-medium text-gray-700 mb-1">Reason for Discrepancy (Required)</label>
+                        <textarea
+                            id="reason"
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            placeholder="e.g., Mistakenly gave extra change, wrong item keyed in..."
+                            required
+                        />
+                    </div>
+                     <div>
+                        <label htmlFor="attachment" className="block text-sm font-medium text-gray-700 mb-1">Attach File (Optional)</label>
+                        <input
+                            id="attachment"
+                            type="file"
+                            onChange={(e) => setAttachment(e.target.files ? e.target.files[0] : null)}
+                            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                     </div>
+                </div>
+            )}
+
+
             <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                <Button type="submit" variant="primary" disabled={!actualCash}>End Shift & Logout</Button>
+                <Button type="submit" variant="primary" disabled={isSubmitDisabled}>End Shift & Logout</Button>
             </div>
         </form>
       )}

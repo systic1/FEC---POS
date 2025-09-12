@@ -85,17 +85,23 @@ const App: React.FC = () => {
     setCashDrawerSessions(prev => [...prev, newSession]);
   };
 
-  const endCashDrawerSession = (closingBalance: number) => {
+  const endCashDrawerSession = (
+    closingBalance: number, 
+    reason?: string, 
+    attachment?: { name: string; type: string; data: string; }
+  ) => {
     if (!currentUser || !activeCashDrawerSession) return;
     setCashDrawerSessions(prev => 
         prev.map(s => 
             s.id === activeCashDrawerSession.id 
             ? {
                 ...s,
-                status: 'CLOSED',
+                status: 'CLOSED' as const,
                 closingTime: new Date().toISOString(),
                 closingBalance,
                 closedByUserId: currentUser.code,
+                ...(reason && { discrepancyReason: reason }),
+                ...(attachment && { discrepancyAttachment: attachment }),
             }
             : s
         )

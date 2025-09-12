@@ -66,6 +66,10 @@ export interface CashDrawerSession {
   openedByUserId: string; // User's code
   closedByUserId: string | null; // User's code
   status: 'OPEN' | 'CLOSED';
-  // We don't store sales directly to avoid large object in local storage,
-  // we will filter sales by date range and payment method instead.
+  discrepancyReason?: string;
+  discrepancyAttachment?: {
+    name: string;
+    type: string;
+    data: string; // base64 data URL
+  };
 }

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Customer, Sale, CashDrawerSession } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
 import Dashboard from './components/Dashboard';
@@ -12,6 +12,7 @@ import { User, Role, DEFAULT_USERS } from './auth';
 import OpenRegisterModal from './components/cash-drawer/OpenRegisterModal';
 import CloseRegisterModal from './components/cash-drawer/CloseRegisterModal';
 import CashDrawerHistory from './components/cash-drawer/CashDrawerHistory';
+import { getOpeningBalanceSuggestion, OpeningBalanceSuggestion } from './services/geminiService';
 
 type View = 'dashboard' | 'sale' | 'history' | 'customers' | 'staff' | 'cashdrawer';
 
@@ -34,6 +35,10 @@ const App: React.FC = () => {
   const [cashDrawerSessions, setCashDrawerSessions] = useLocalStorage<CashDrawerSession[]>('cashDrawerSessions', []);
   
   const [isClosingRegister, setIsClosingRegister] = useState(false);
+  const [isOpeningRegister, setIsOpeningRegister] = useState(false);
+  
+  const [openingSuggestion, setOpeningSuggestion] = useState<OpeningBalanceSuggestion | null>(null);
+  const [isSuggestionLoading, setIsSuggestionLoading] = useState(false);
 
   const activeCashDrawerSession = useMemo(() => 
     cashDrawerSessions.find(s => s.status === 'OPEN'),
@@ -52,6 +57,34 @@ const App: React.FC = () => {
   
   const [activeView, setActiveView] = useState<View>(() => getDefaultView(currentUser?.role));
 
+  const prepareToOpenRegister = async () => {
+    setIsOpeningRegister(true);
+    setIsSuggestionLoading(true);
+
+    const sortedClosedSessions = cashDrawerSessions
+      .filter(s => s.status === 'CLOSED' && s.closingBalance !== null)
+      .sort((a, b) => new Date(b.closingTime!).getTime() - new Date(a.closingTime!).getTime());
+    
+    const lastClosingBalance = sortedClosedSessions[0]?.closingBalance || null;
+    const historicalOpeningBalances = cashDrawerSessions
+      .slice(-5) // get last 5 for context
+      .map(s => s.openingBalance);
+
+    const suggestion = await getOpeningBalanceSuggestion(lastClosingBalance, historicalOpeningBalances);
+    setOpeningSuggestion(suggestion);
+    setIsSuggestionLoading(false);
+  };
+  
+  useEffect(() => {
+    // If a user is logged in, is not an admin, and has no active session, prompt to open one.
+    if (currentUser && currentUser.role !== 'admin' && !activeCashDrawerSession) {
+        prepareToOpenRegister();
+    } else {
+        setIsOpeningRegister(false);
+    }
+  }, [currentUser, activeCashDrawerSession, cashDrawerSessions]);
+
+
   const authenticateUser = (code: string): User | null => {
     return users.find(user => user.code === code) || null;
   };
@@ -62,27 +95,25 @@ const App: React.FC = () => {
   };
   
   const handleLogout = () => {
-    if (activeCashDrawerSession && activeCashDrawerSession.openedByUserId === currentUser?.code) {
-        alert('You have an open cash session. Please end your shift before logging out.');
-        setIsClosingRegister(true);
-    } else {
-        setCurrentUser(null);
-    }
+     setCurrentUser(null);
   };
 
-  const startCashDrawerSession = (openingBalance: number) => {
+  const startCashDrawerSession = (openingBalance: number, reason?: string) => {
     if (!currentUser) return;
     const newSession: CashDrawerSession = {
         id: `session_${new Date().getTime()}`,
         openingTime: new Date().toISOString(),
         closingTime: null,
         openingBalance,
+        ...(reason && { openingBalanceDiscrepancyReason: reason }),
         closingBalance: null,
         openedByUserId: currentUser.code,
         closedByUserId: null,
         status: 'OPEN',
     };
     setCashDrawerSessions(prev => [...prev, newSession]);
+    setIsOpeningRegister(false);
+    setOpeningSuggestion(null);
   };
 
   const endCashDrawerSession = (
@@ -146,8 +177,7 @@ const App: React.FC = () => {
     setView: (view: View) => void; 
     currentView: View; 
     user: User;
-    onLogout: () => void;
-  }> = ({ setView, currentView, user, onLogout }) => {
+  }> = ({ setView, currentView, user }) => {
     const allNavItems: { id: View; label: string; icon: JSX.Element }[] = [
       { id: 'dashboard', label: 'Dashboard', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> },
       { id: 'sale', label: 'Entry', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg> },
@@ -185,28 +215,31 @@ const App: React.FC = () => {
                 <p className="text-xs font-medium text-white truncate">{user.name}</p>
                 <p className="text-xs text-gray-400 capitalize">{user.role}</p>
             </div>
-             {activeCashDrawerSession && (
+            {user.role === 'admin' ? (
                 <button
-                    onClick={() => setIsClosingRegister(true)}
-                    className="w-full flex flex-col items-center justify-center py-3 transition-colors duration-200 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md mb-2"
-                    aria-label="End Shift"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-xs mt-1">End Shift</span>
+                    onClick={handleLogout}
+                    className="w-full flex flex-col items-center justify-center py-3 transition-colors duration-200 hover:bg-red-800 hover:text-white rounded-md"
+                    aria-label="Logout"
+                  >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <span className="text-xs mt-1">Logout</span>
                 </button>
-             )}
-            <button
-                onClick={onLogout}
-                className="w-full flex flex-col items-center justify-center py-3 transition-colors duration-200 hover:bg-red-800 hover:text-white rounded-md"
-                aria-label="Logout"
-              >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              <span className="text-xs mt-1">Logout</span>
-            </button>
+            ) : (
+                 activeCashDrawerSession && (
+                    <button
+                        onClick={() => setIsClosingRegister(true)}
+                        className="w-full flex flex-col items-center justify-center py-3 transition-colors duration-200 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md"
+                        aria-label="End Shift"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-xs mt-1">End Shift</span>
+                    </button>
+                 )
+            )}
         </div>
       </aside>
     );
@@ -236,7 +269,7 @@ const App: React.FC = () => {
       case 'staff':
         return <StaffManagement users={users} addUser={addUser} deleteUser={deleteUser} updateUser={updateUser} />;
       case 'cashdrawer':
-        return <CashDrawerHistory sessions={cashDrawerSessions} users={users} />;
+        return <CashDrawerHistory sessions={cashDrawerSessions} users={users} sales={sales} />;
       default:
         return <Dashboard sales={sales} customers={customers} />;
     }
@@ -246,26 +279,30 @@ const App: React.FC = () => {
     return <Login onLoginSuccess={handleLogin} authenticate={authenticateUser} />;
   }
 
-  if (!activeCashDrawerSession) {
-    return <OpenRegisterModal onSessionStart={startCashDrawerSession} />;
-  }
-  
-  if (isClosingRegister) {
-    return <CloseRegisterModal 
-        onClose={() => setIsClosingRegister(false)}
-        onSessionEnd={endCashDrawerSession}
-        session={activeCashDrawerSession}
-        sales={sales}
-        currentUser={currentUser}
-     />
-  }
-
   return (
     <div className="flex bg-slate-100 h-screen overflow-hidden">
-      <Sidebar setView={setActiveView} currentView={activeView} user={currentUser} onLogout={handleLogout} />
+      <Sidebar setView={setActiveView} currentView={activeView} user={currentUser} />
       <main className="flex-1 min-h-screen overflow-y-auto">
         {renderView()}
       </main>
+
+      {isOpeningRegister && (
+        <OpenRegisterModal 
+            onSessionStart={startCashDrawerSession}
+            isLoading={isSuggestionLoading}
+            suggestion={openingSuggestion}
+        />
+      )}
+  
+      {isClosingRegister && (
+        <CloseRegisterModal 
+            onClose={() => setIsClosingRegister(false)}
+            onSessionEnd={endCashDrawerSession}
+            session={activeCashDrawerSession!}
+            sales={sales}
+            currentUser={currentUser}
+        />
+      )}
     </div>
   );
 };

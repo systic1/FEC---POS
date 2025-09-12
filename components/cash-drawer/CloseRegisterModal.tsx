@@ -34,6 +34,7 @@ const CloseRegisterModal: React.FC<CloseRegisterModalProps> = ({ onClose, onSess
   const [actualCash, setActualCash] = useState('');
   const [reason, setReason] = useState('');
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { totalCashSales, expectedBalance } = useMemo(() => {
     const sessionSales = sales.filter(sale => {
@@ -70,20 +71,21 @@ const CloseRegisterModal: React.FC<CloseRegisterModalProps> = ({ onClose, onSess
         return;
     }
 
-    const confirmMessage = `You are about to close the register.\n\nDiscrepancy: ₹${discrepancy.toFixed(2)}\n\nThis will log you out. Are you sure?`;
-    if (window.confirm(confirmMessage)) {
-      let attachmentData;
-      if (attachment) {
-          try {
-              attachmentData = await fileToBase64(attachment);
-          } catch (error) {
-              console.error("Error converting file:", error);
-              alert("Could not process the attachment. Please try again.");
-              return;
-          }
-      }
-      onSessionEnd(counted, reason, attachmentData);
+    setIsSubmitting(true);
+
+    let attachmentData;
+    if (attachment) {
+        try {
+            attachmentData = await fileToBase64(attachment);
+        } catch (error) {
+            console.error("Error converting file:", error);
+            alert("Could not process the attachment. Please try again.");
+            setIsSubmitting(false);
+            return;
+        }
     }
+    // Proceed directly without confirmation
+    onSessionEnd(counted, reason.trim(), attachmentData);
   };
   
   const canClose = session.openedByUserId === currentUser.code || ['admin', 'manager'].includes(currentUser.role);
@@ -165,8 +167,10 @@ const CloseRegisterModal: React.FC<CloseRegisterModalProps> = ({ onClose, onSess
 
 
             <div className="flex justify-end gap-3 pt-4">
-                <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                <Button type="submit" variant="primary" disabled={isSubmitDisabled}>End Shift & Logout</Button>
+                <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+                <Button type="submit" variant="primary" disabled={isSubmitDisabled || isSubmitting}>
+                    {isSubmitting ? 'Processing...' : 'End Shift & Logout'}
+                </Button>
             </div>
         </form>
       )}

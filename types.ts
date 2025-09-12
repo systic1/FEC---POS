@@ -62,6 +62,7 @@ export interface CashDrawerSession {
   openingTime: string;
   closingTime: string | null;
   openingBalance: number;
+  openingBalanceDiscrepancyReason?: string;
   closingBalance: number | null;
   openedByUserId: string; // User's code
   closedByUserId: string | null; // User's code

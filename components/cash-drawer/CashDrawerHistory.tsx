@@ -1,17 +1,22 @@
 import React, { useMemo, useState } from 'react';
-import { CashDrawerSession } from '../../types';
+import { CashDrawerSession, Sale } from '../../types';
 import { User } from '../../auth';
 import Card from '../ui/Card';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
+import { getDiscrepancyAnalysis } from '../../services/geminiService';
+import Spinner from '../ui/Spinner';
 
 interface CashDrawerHistoryProps {
   sessions: CashDrawerSession[];
   users: User[];
+  sales: Sale[];
 }
 
-const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users }) => {
+const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users, sales }) => {
   const [detailsSession, setDetailsSession] = useState<CashDrawerSession | null>(null);
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
+  const [currentAnalysis, setCurrentAnalysis] = useState<string | null>(null);
 
   const getUserName = (userId: string | null) => {
     if (!userId) return 'N/A';
@@ -21,6 +26,35 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users }
   const sortedSessions = useMemo(() => {
     return [...sessions].sort((a, b) => new Date(b.openingTime).getTime() - new Date(a.openingTime).getTime());
   }, [sessions]);
+  
+  const handleCloseModal = () => {
+    setDetailsSession(null);
+    setCurrentAnalysis(null);
+  }
+
+  const handleViewDetails = async (session: CashDrawerSession) => {
+    setDetailsSession(session);
+    setCurrentAnalysis(null);
+    setIsAnalysisLoading(true);
+
+    const salesForSession = sales.filter(sale => {
+      const saleDate = new Date(sale.date);
+      const openingTime = new Date(session.openingTime);
+      const closingTime = session.closingTime ? new Date(session.closingTime) : new Date();
+      return sale.paymentMethod === 'Cash' && saleDate >= openingTime && saleDate <= closingTime;
+    });
+
+    try {
+        const analysis = await getDiscrepancyAnalysis(session, salesForSession);
+        setCurrentAnalysis(analysis);
+    } catch (error) {
+        console.error("Failed to get analysis:", error);
+        setCurrentAnalysis("Could not load AI analysis. Please try again.");
+    } finally {
+        setIsAnalysisLoading(false);
+    }
+  };
+
 
   return (
     <div className="p-6">
@@ -33,21 +67,29 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users }
                 <th scope="col" className="px-6 py-3">Date</th>
                 <th scope="col" className="px-6 py-3">Status</th>
                 <th scope="col" className="px-6 py-3">Opened By</th>
-                <th scope="col" className="px-6 py-3">Closed By</th>
-                <th scope="col" className="px-6 py-3 text-right">Opening Balance</th>
-                <th scope="col" className="px-6 py-3 text-right">Closing Balance</th>
+                <th scope="col" className="px-6 py-3 text-right">Opening</th>
+                <th scope="col" className="px-6 py-3 text-right">Closing</th>
                 <th scope="col" className="px-6 py-3 text-right">Discrepancy</th>
-                <th scope="col" className="px-6 py-3">Notes</th>
+                <th scope="col" className="px-6 py-3">Notes & Analysis</th>
               </tr>
             </thead>
             <tbody>
               {sortedSessions.map(session => {
-                 const discrepancy = session.closingBalance !== null ? session.closingBalance - session.openingBalance : null; // Simplified for now
+                const sessionSales = sales.filter(sale => {
+                    const saleDate = new Date(sale.date);
+                    return new Date(session.openingTime) <= saleDate && (session.closingTime ? saleDate <= new Date(session.closingTime) : true);
+                });
+                const totalCashSales = sessionSales
+                    .filter(sale => sale.paymentMethod === 'Cash')
+                    .reduce((sum, sale) => sum + sale.total, 0);
+                
+                const expectedBalance = session.openingBalance + totalCashSales;
+                const discrepancy = session.closingBalance !== null ? session.closingBalance - expectedBalance : null;
                  
                  let discrepancyColor = 'text-gray-900';
                  if (discrepancy !== null) {
-                     if (discrepancy > 0) discrepancyColor = 'text-green-600';
-                     if (discrepancy < 0) discrepancyColor = 'text-red-600';
+                     if (discrepancy > 0.01) discrepancyColor = 'text-green-600';
+                     if (discrepancy < -0.01) discrepancyColor = 'text-red-600';
                  }
 
                 return (
@@ -70,7 +112,6 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users }
                         )}
                     </td>
                     <td className="px-6 py-4">{getUserName(session.openedByUserId)}</td>
-                    <td className="px-6 py-4">{getUserName(session.closedByUserId)}</td>
                     <td className="px-6 py-4 text-right">₹{session.openingBalance.toLocaleString('en-IN')}</td>
                     <td className="px-6 py-4 text-right">
                         {session.closingBalance !== null ? `₹${session.closingBalance.toLocaleString('en-IN')}` : 'N/A'}
@@ -79,9 +120,9 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users }
                         {discrepancy !== null ? `₹${discrepancy.toLocaleString('en-IN')}` : 'N/A'}
                     </td>
                     <td className="px-6 py-4">
-                      {session.discrepancyReason && (
-                        <Button size="sm" variant="secondary" onClick={() => setDetailsSession(session)}>
-                          View Note
+                      {(discrepancy !== null && Math.abs(discrepancy) > 0.01) && (
+                        <Button size="sm" variant="secondary" onClick={() => handleViewDetails(session)}>
+                          View
                         </Button>
                       )}
                     </td>
@@ -90,7 +131,7 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users }
               })}
                {sortedSessions.length === 0 && (
                   <tr>
-                      <td colSpan={8} className="text-center py-10 text-gray-500">No cash drawer sessions found.</td>
+                      <td colSpan={7} className="text-center py-10 text-gray-500">No cash drawer sessions found.</td>
                   </tr>
               )}
             </tbody>
@@ -99,12 +140,18 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users }
       </Card>
 
       {detailsSession && (
-        <Modal isOpen={true} onClose={() => setDetailsSession(null)} title="Discrepancy Note">
+        <Modal isOpen={true} onClose={handleCloseModal} title="Discrepancy Note & Analysis">
             <div className="space-y-4">
                 <div>
-                    <h4 className="font-semibold text-gray-700">Reason Provided:</h4>
-                    <p className="p-2 bg-gray-100 rounded-md mt-1 whitespace-pre-wrap">{detailsSession.discrepancyReason}</p>
+                    <h4 className="font-semibold text-gray-700">Staff Note:</h4>
+                    <p className="p-2 bg-gray-100 rounded-md mt-1 whitespace-pre-wrap">{detailsSession.discrepancyReason || 'No reason was provided.'}</p>
                 </div>
+                 {detailsSession.openingBalanceDiscrepancyReason && (
+                     <div>
+                        <h4 className="font-semibold text-gray-700">Note on Opening Balance:</h4>
+                        <p className="p-2 bg-gray-100 rounded-md mt-1 whitespace-pre-wrap">{detailsSession.openingBalanceDiscrepancyReason}</p>
+                    </div>
+                )}
                 {detailsSession.discrepancyAttachment && (
                      <div>
                         <h4 className="font-semibold text-gray-700">Attachment:</h4>
@@ -117,6 +164,20 @@ const CashDrawerHistory: React.FC<CashDrawerHistoryProps> = ({ sessions, users }
                         </a>
                     </div>
                 )}
+                <hr />
+                 <div>
+                    <h4 className="font-semibold text-gray-700">AI Auditor Analysis:</h4>
+                    <div className="p-3 bg-blue-50 border-l-4 border-blue-400 rounded-r-lg mt-1 min-h-[60px]">
+                        {isAnalysisLoading ? (
+                            <div className="flex items-center gap-2 text-sm text-blue-800">
+                                <Spinner />
+                                <span>Analyzing...</span>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-blue-800">{currentAnalysis || 'No analysis available.'}</p>
+                        )}
+                    </div>
+                </div>
             </div>
         </Modal>
       )}

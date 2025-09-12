@@ -1,6 +1,5 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
-import { Customer, CartItem, Sale, Transaction } from '../types';
+import { Customer, CartItem, Sale, Transaction, CashDrawerSession } from '../types';
 import { getWaiverStatus } from "../utils/waiverUtils";
 
 const API_KEY = process.env.API_KEY;
@@ -10,6 +9,129 @@ if (!API_KEY) {
 }
 
 const ai = new GoogleGenAI({ apiKey: API_KEY! });
+const STANDARD_FLOAT_AMOUNT = 2500;
+
+export interface OpeningBalanceSuggestion {
+    suggestedBalance: number;
+    recommendation: string;
+}
+
+export const getOpeningBalanceSuggestion = async (
+  lastClosingBalance: number | null,
+  historicalOpeningBalances: number[]
+): Promise<OpeningBalanceSuggestion> => {
+  try {
+    const prompt = `You are an intelligent assistant for a Point-of-Sale system at a trampoline park called 'Jump India'. Your task is to provide a smart recommendation for the opening cash balance (float) for a new shift.
+
+Analyze the following data:
+- Standard Float Amount: ₹${STANDARD_FLOAT_AMOUNT}
+- Previous Shift's Closing Balance: ${lastClosingBalance !== null ? `₹${lastClosingBalance}` : 'N/A (First shift or no previous data)'}
+- Historical Opening Balances for recent shifts: [${historicalOpeningBalances.map(b => `₹${b}`).join(', ') || 'None'}]
+
+Based on this data, provide a suggested opening balance and a brief, clear recommendation for the cashier. The recommendation should be friendly but professional, focusing on security and accuracy.
+
+- If there's no previous closing balance, suggest starting with the standard float.
+- Specifically, if the previous closing balance is higher than ₹8000, STRONGLY recommend making a cash deposit to the safe for security, and then starting with the standard float amount.
+- If the previous closing balance is higher than the standard float (but not over ₹8000), recommend making a cash deposit to the safe and starting with the standard float.
+- If the previous closing balance is close to the standard float or historical averages, suggest confirming that amount.
+- If the previous closing balance is significantly lower than the standard float, flag it as a potential issue and advise to confirm or add more cash.
+
+Your response MUST be in a valid JSON format with two keys: "suggestedBalance" (a number) and "recommendation" (a string).`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            suggestedBalance: { type: Type.NUMBER },
+            recommendation: { type: Type.STRING },
+          },
+          required: ['suggestedBalance', 'recommendation'],
+        },
+      },
+    });
+
+    const jsonString = response.text.trim();
+    const result = JSON.parse(jsonString);
+    return result;
+
+  } catch (error) {
+    console.error("Error generating opening balance suggestion:", error);
+    // Fallback logic in case of AI failure
+    const suggestedBalance = lastClosingBalance !== null ? lastClosingBalance : STANDARD_FLOAT_AMOUNT;
+    return {
+      suggestedBalance,
+      recommendation: "AI suggestion unavailable. Please carefully count the cash in the drawer and enter the correct opening amount.",
+    };
+  }
+};
+
+
+export const getDiscrepancyAnalysis = async (session: CashDrawerSession, cashSalesForSession: Sale[]): Promise<string> => {
+  try {
+    const cashSalesTotal = cashSalesForSession.reduce((sum, sale) => sum + sale.total, 0);
+    const expectedBalance = session.openingBalance + cashSalesTotal;
+    const discrepancy = (session.closingBalance || 0) - expectedBalance;
+
+    const summarizeCart = (items: CartItem[]): string => {
+        const itemCounts: { [name: string]: number } = {};
+        items.forEach(item => {
+            itemCounts[item.name] = (itemCounts[item.name] || 0) + 1;
+        });
+        return Object.entries(itemCounts)
+            .map(([name, count]) => `${name}${count > 1 ? ` (x${count})` : ''}`)
+            .join(', ');
+    };
+
+    const prompt = `You are an intelligent financial auditor for a Point-of-Sale system. Your task is to analyze a cash drawer session that has a discrepancy and provide a concise, professional summary that offers a clear starting point for an investigation.
+
+Here is the data for the session:
+- Opening Balance: ₹${session.openingBalance.toFixed(2)}
+- Counted Closing Balance: ₹${(session.closingBalance || 0).toFixed(2)}
+- Expected Closing Balance (Opening Balance + Cash Sales): ₹${expectedBalance.toFixed(2)}
+- Discrepancy: ₹${discrepancy.toFixed(2)} (${discrepancy >= 0.01 ? 'Over' : 'Short'})
+- Reason provided by staff: "${session.discrepancyReason || 'No reason provided.'}"
+
+Here is a list of all cash transactions during this shift:
+${cashSalesForSession.length > 0 ? cashSalesForSession.map(sale => `- Sale ID ${sale.id.slice(-6)}: A cash sale of ₹${sale.total.toFixed(2)} for: ${summarizeCart(sale.items)}`).join('\n') : 'No cash sales were recorded.'}
+
+Based on all this information, provide a professional summary of what might have caused the discrepancy.
+- Synthesize the staff's reason with the cash transaction data into a helpful narrative.
+- Your primary goal is to identify and **list the specific cash transaction(s) that most likely relate to the staff's reason for the discrepancy.**
+- For instance, if the reason mentions paying for an item, look for transactions of a similar value.
+- Your tone should be neutral and analytical.
+
+Example Analysis:
+"The ₹-500.00 shortage could be explained by the staff's note about paying for inventory. This likely corresponds to the following transaction:
+- Sale ID 1a2b3c: A cash sale of ₹500.00 for: 1 hour jump (x1)
+It is plausible this payment was used for the inventory as mentioned, which would account for the difference."`;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+            temperature: 0.5,
+            maxOutputTokens: 250,
+            thinkingConfig: { thinkingBudget: 100 },
+        }
+    });
+    
+    const analysisText = response.text;
+    if (!analysisText) {
+      console.error("Error generating discrepancy analysis: AI response was empty.", JSON.stringify(response, null, 2));
+      return "AI analysis returned an empty response. Please review details manually.";
+    }
+    return analysisText.trim();
+
+  } catch (error) {
+    console.error("Error generating discrepancy analysis:", error);
+    return "AI analysis failed. Please review the transaction details manually.";
+  }
+};
+
 
 export const generateWaiverText = async (): Promise<string> => {
   try {

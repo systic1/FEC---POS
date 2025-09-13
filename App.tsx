@@ -64,15 +64,16 @@ const App: React.FC = () => {
     setIsSuggestionLoading(true);
 
     const sortedClosedSessions = cashDrawerSessions
-      .filter(s => s.status === 'CLOSED' && s.closingBalance !== null)
+      .filter(s => s.status === 'CLOSED' && s.closingBalance !== null && s.closingTime)
       .sort((a, b) => new Date(b.closingTime!).getTime() - new Date(a.closingTime!).getTime());
     
     const lastClosingBalance = sortedClosedSessions[0]?.closingBalance || null;
+    const lastClosingTime = sortedClosedSessions[0]?.closingTime || null;
     const historicalOpeningBalances = cashDrawerSessions
       .slice(-5) // get last 5 for context
       .map(s => s.openingBalance);
 
-    const suggestion = await getOpeningBalanceSuggestion(lastClosingBalance, historicalOpeningBalances);
+    const suggestion = await getOpeningBalanceSuggestion(lastClosingBalance, lastClosingTime, historicalOpeningBalances);
     setOpeningSuggestion(suggestion);
     setIsSuggestionLoading(false);
   };

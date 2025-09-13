@@ -18,6 +18,7 @@ export interface OpeningBalanceSuggestion {
 
 export const getOpeningBalanceSuggestion = async (
   lastClosingBalance: number | null,
+  lastClosingTime: string | null,
   historicalOpeningBalances: number[]
 ): Promise<OpeningBalanceSuggestion> => {
   try {
@@ -26,17 +27,19 @@ export const getOpeningBalanceSuggestion = async (
 Analyze the following data:
 - Standard Float Amount: ₹${STANDARD_FLOAT_AMOUNT}
 - Previous Shift's Closing Balance: ${lastClosingBalance !== null ? `₹${lastClosingBalance}` : 'N/A (First shift or no previous data)'}
-- Historical Opening Balances for recent shifts: [${historicalOpeningBalances.map(b => `₹${b}`).join(', ') || 'None'}]
+- Previous Shift's Closing Time: ${lastClosingTime ? new Date(lastClosingTime).toLocaleString('en-IN') : 'N/A'}
+- Current Time: ${new Date().toLocaleString('en-IN')}
 
-Based on this data, provide a suggested opening balance and a brief, clear recommendation for the cashier. The recommendation should be friendly but professional, focusing on security and accuracy.
+Based on this data, provide a suggested opening balance and a brief, clear recommendation for the cashier. Your logic MUST be time-sensitive.
 
-- If there's no previous closing balance, suggest starting with the standard float.
-- Specifically, if the previous closing balance is higher than ₹8000, STRONGLY recommend making a cash deposit to the safe for security, and then starting with the standard float amount.
-- If the previous closing balance is higher than the standard float (but not over ₹8000), recommend making a cash deposit to the safe and starting with the standard float.
-- If the previous closing balance is close to the standard float or historical averages, suggest confirming that amount.
-- If the previous closing balance is significantly lower than the standard float, flag it as a potential issue and advise to confirm or add more cash.
+- **RULE 1: Same-Day Continuation.** If the previous shift was closed on the SAME DAY as the current time, the suggested balance should be the *previous closing balance*. The recommendation should state this is a continuation of the day's float. For example: "Welcome back! As this is a new shift on the same day, please continue with the previous session's closing balance. Count and confirm the amount." If the amount is high (over ₹8000), add a suggestion to make a safe deposit.
+
+- **RULE 2: New Day.** If there is NO previous shift, or the previous shift was closed on a PREVIOUS DAY, the suggested balance should be the standard float amount (₹${STANDARD_FLOAT_AMOUNT}). The recommendation should focus on resetting the float for the new day. For example: "Good morning! Please start the day with the standard float. If you have excess cash from yesterday, make a deposit to the safe."
+
+- **RULE 3: Low Balance on New Day.** If it's a new day and the previous closing balance was significantly lower than the standard float, flag it and advise to confirm or add cash.
 
 Your response MUST be in a valid JSON format with two keys: "suggestedBalance" (a number) and "recommendation" (a string).`;
+
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -61,10 +64,15 @@ Your response MUST be in a valid JSON format with two keys: "suggestedBalance" (
   } catch (error) {
     console.error("Error generating opening balance suggestion:", error);
     // Fallback logic in case of AI failure
-    const suggestedBalance = lastClosingBalance !== null ? lastClosingBalance : STANDARD_FLOAT_AMOUNT;
+    const isSameDay = lastClosingTime ? new Date(lastClosingTime).toDateString() === new Date().toDateString() : false;
+    const suggestedBalance = isSameDay && lastClosingBalance !== null ? lastClosingBalance : STANDARD_FLOAT_AMOUNT;
+    let recommendation = "AI suggestion unavailable. Please carefully count the cash in the drawer and enter the correct opening amount.";
+    if (isSameDay && lastClosingBalance !== null) {
+        recommendation = "AI suggestion unavailable. It looks like you're starting a new shift on the same day. Please count the cash from your previous session and enter that amount.";
+    }
     return {
       suggestedBalance,
-      recommendation: "AI suggestion unavailable. Please carefully count the cash in the drawer and enter the correct opening amount.",
+      recommendation,
     };
   }
 };

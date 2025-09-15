@@ -1,32 +1,37 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Customer, Sale, CashDrawerSession, CashDeposit } from './types';
+import { Customer, Sale, CashDrawerSession, CashDeposit, Permission } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
 import Dashboard from './components/Dashboard';
 import PointOfSale from './components/PointOfSale';
 import CustomerManagement from './components/CustomerManagement';
 import History from './components/History';
-import StaffManagement from './components/StaffManagement';
+import CompanyManagement from './components/CompanyManagement';
 import { MOCK_CUSTOMERS } from './constants';
 import Login from './components/Login';
-import { User, Role, DEFAULT_USERS } from './auth';
+import { User, Role, DEFAULT_USERS, PERMISSIONS } from './auth';
 import OpenRegisterModal from './components/cash-drawer/OpenRegisterModal';
 import CloseRegisterModal from './components/cash-drawer/CloseRegisterModal';
 import CashDrawerHistory from './components/cash-drawer/CashDrawerHistory';
 import { getOpeningBalanceSuggestion, OpeningBalanceSuggestion } from './services/geminiService';
 import CashDepositModal from './components/cash-drawer/CashDepositModal';
 
-type View = 'dashboard' | 'sale' | 'history' | 'customers' | 'staff' | 'cashdrawer';
+type PageView = 'dashboard' | 'sale' | 'history' | 'customers' | 'company' | 'cashdrawer';
 
-// Define which roles can access which views
-const viewPermissions: Record<View, Role[]> = {
-  dashboard: ['admin'],
-  sale: ['staff', 'manager', 'admin'],
-  history: ['manager', 'admin'],
-  customers: ['manager', 'admin'],
-  staff: ['admin'],
-  cashdrawer: ['manager', 'admin'],
+// Define the initial permissions for each role using the new granular keys
+const INITIAL_ROLE_PERMISSIONS: Record<string, Permission[]> = {
+  admin: Object.keys(PERMISSIONS) as Permission[],
+  manager: [
+    'page:sale', 
+    'page:history', 
+    'page:customers', 
+    'page:cashdrawer', 
+    'feature:sale:apply_discount', 
+    'feature:cashdrawer:make_deposit',
+    'page:company',
+    'feature:company:manage_staff',
+  ],
+  staff: ['page:sale'],
 };
-
 
 const App: React.FC = () => {
   const [customers, setCustomers] = useLocalStorage<Customer[]>('customers', MOCK_CUSTOMERS);
@@ -34,6 +39,7 @@ const App: React.FC = () => {
   const [users, setUsers] = useLocalStorage<User[]>('users', DEFAULT_USERS);
   const [currentUser, setCurrentUser] = useLocalStorage<User | null>('currentUser', null);
   const [cashDrawerSessions, setCashDrawerSessions] = useLocalStorage<CashDrawerSession[]>('cashDrawerSessions', []);
+  const [rolePermissions, setRolePermissions] = useLocalStorage<Record<string, Permission[]>>('rolePermissions', INITIAL_ROLE_PERMISSIONS);
   
   const [isClosingRegister, setIsClosingRegister] = useState(false);
   const [isOpeningRegister, setIsOpeningRegister] = useState(false);
@@ -46,18 +52,29 @@ const App: React.FC = () => {
     cashDrawerSessions.find(s => s.status === 'OPEN'),
   [cashDrawerSessions]);
 
-  const getDefaultView = (role: Role | undefined): View => {
-    if (!role) return 'sale'; 
-    if (viewPermissions.sale.includes(role)) return 'sale';
-    if (viewPermissions.history.includes(role)) return 'history';
-    if (viewPermissions.customers.includes(role)) return 'customers';
-    if (viewPermissions.dashboard.includes(role)) return 'dashboard';
-    if (viewPermissions.staff.includes(role)) return 'staff';
-    if (viewPermissions.cashdrawer.includes(role)) return 'cashdrawer';
-    return 'sale'; 
+  const hasPermission = useCallback((user: User | null, permission: Permission): boolean => {
+    if (!user) return false;
+    if (user.role === 'admin') return true; // Admin has all permissions implicitly
+    const userPerms = rolePermissions[user.role] || [];
+    return userPerms.includes(permission);
+  }, [rolePermissions]);
+
+
+  const getDefaultView = (user: User | null): PageView => {
+    if (!user) return 'sale';
+    const pageOrder: { view: PageView, permission: Permission }[] = [
+        { view: 'sale', permission: 'page:sale' },
+        { view: 'history', permission: 'page:history' },
+        { view: 'customers', permission: 'page:customers' },
+        { view: 'dashboard', permission: 'page:dashboard' },
+        { view: 'company', permission: 'page:company' },
+        { view: 'cashdrawer', permission: 'page:cashdrawer' },
+    ];
+    const allowedView = pageOrder.find(p => hasPermission(user, p.permission));
+    return allowedView ? allowedView.view : 'sale';
   };
   
-  const [activeView, setActiveView] = useState<View>(() => getDefaultView(currentUser?.role));
+  const [activeView, setActiveView] = useState<PageView>(() => getDefaultView(currentUser));
 
   const prepareToOpenRegister = async () => {
     setIsOpeningRegister(true);
@@ -94,7 +111,7 @@ const App: React.FC = () => {
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
-    setActiveView(getDefaultView(user.role));
+    setActiveView(getDefaultView(user));
   };
   
   const handleLogout = () => {
@@ -197,21 +214,52 @@ const App: React.FC = () => {
     setUsers(prev => prev.map(user => user.code === originalCode ? updatedUserData : user));
   };
 
+  const addOrUpdateRole = (roleName: string, permissions: Permission[], originalRoleName?: string) => {
+    setRolePermissions(prev => {
+        const newRoles = { ...prev };
+        const safeRoleName = roleName.toLowerCase().replace(/\s+/g, '_');
+        
+        if (originalRoleName && originalRoleName !== safeRoleName) {
+            delete newRoles[originalRoleName];
+        }
+
+        newRoles[safeRoleName] = permissions;
+        return newRoles;
+    });
+
+    if (originalRoleName && originalRoleName !== roleName) {
+        setUsers(prevUsers => prevUsers.map(u => u.role === originalRoleName ? { ...u, role: roleName } : u));
+    }
+};
+
+  const deleteRole = (roleName: string, reassignToRoleName: string | null) => {
+      if (reassignToRoleName) {
+          setUsers(prevUsers => prevUsers.map(u => u.role === roleName ? { ...u, role: reassignToRoleName } : u));
+      }
+
+      setRolePermissions(prev => {
+          const newRoles = { ...prev };
+          delete newRoles[roleName];
+          return newRoles;
+      });
+  };
+
+
   const Sidebar: React.FC<{ 
-    setView: (view: View) => void; 
-    currentView: View; 
+    setView: (view: PageView) => void; 
+    currentView: PageView; 
     user: User;
   }> = ({ setView, currentView, user }) => {
-    const allNavItems: { id: View; label: string; icon: JSX.Element }[] = [
-      { id: 'dashboard', label: 'Dashboard', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> },
-      { id: 'sale', label: 'Entry', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg> },
-      { id: 'history', label: 'History', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
-      { id: 'customers', label: 'Customers', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg> },
-      { id: 'cashdrawer', label: 'Cash Drawer', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
-      { id: 'staff', label: 'Staff', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.122-1.28-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.122-1.28.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
+    const allNavItems: { id: PageView; label: string; icon: JSX.Element; permission: Permission }[] = [
+      { id: 'dashboard', label: 'Dashboard', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>, permission: 'page:dashboard' },
+      { id: 'sale', label: 'Entry', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>, permission: 'page:sale' },
+      { id: 'history', label: 'History', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, permission: 'page:history' },
+      { id: 'customers', label: 'Customers', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>, permission: 'page:customers' },
+      { id: 'cashdrawer', label: 'Cash Drawer', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>, permission: 'page:cashdrawer' },
+      { id: 'company', label: 'Company', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.122-1.28-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.122-1.28.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>, permission: 'page:company' },
     ];
     
-    const navItems = allNavItems.filter(item => viewPermissions[item.id].includes(user.role));
+    const navItems = allNavItems.filter(item => hasPermission(user, item.permission));
   
     return (
       <aside className="w-24 bg-gray-900 text-gray-300 flex flex-col items-center py-4 space-y-4">
@@ -270,7 +318,7 @@ const App: React.FC = () => {
   };
 
   const renderView = () => {
-    if (!currentUser || !viewPermissions[activeView].includes(currentUser.role)) {
+    if (!currentUser || !hasPermission(currentUser, `page:${activeView}` as Permission)) {
         return (
             <div className="p-8 text-center flex items-center justify-center h-full">
                 <div>
@@ -285,13 +333,22 @@ const App: React.FC = () => {
       case 'dashboard':
         return <Dashboard sales={sales} customers={customers} />;
       case 'sale':
-        return <PointOfSale sales={sales} customers={customers} addSale={addSale} addOrUpdateCustomer={addOrUpdateCustomer} activeCashDrawerSession={activeCashDrawerSession} currentUser={currentUser} onMakeDeposit={() => setIsDepositModalOpen(true)} />;
+        return <PointOfSale sales={sales} customers={customers} addSale={addSale} addOrUpdateCustomer={addOrUpdateCustomer} activeCashDrawerSession={activeCashDrawerSession} currentUser={currentUser} onMakeDeposit={() => setIsDepositModalOpen(true)} hasPermission={(p) => hasPermission(currentUser, p)} />;
       case 'history':
         return <History sales={sales} />;
       case 'customers':
         return <CustomerManagement customers={customers} addOrUpdateCustomer={addOrUpdateCustomer}/>;
-      case 'staff':
-        return <StaffManagement users={users} addUser={addUser} deleteUser={deleteUser} updateUser={updateUser} />;
+      case 'company':
+        return <CompanyManagement 
+                  users={users} 
+                  addUser={addUser} 
+                  deleteUser={deleteUser} 
+                  updateUser={updateUser} 
+                  rolePermissions={rolePermissions}
+                  addOrUpdateRole={addOrUpdateRole}
+                  deleteRole={deleteRole}
+                  hasPermission={(p) => hasPermission(currentUser, p)}
+                />;
       case 'cashdrawer':
         return <CashDrawerHistory sessions={cashDrawerSessions} users={users} sales={sales} />;
       default:

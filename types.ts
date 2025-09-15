@@ -1,4 +1,7 @@
 import { User } from './auth';
+// FIX: The circular dependency between types.ts and auth.ts is resolved.
+// 'Permission' is now defined in auth.ts and re-exported here.
+export type { Permission } from './auth';
 
 export interface Customer {
   id: string;

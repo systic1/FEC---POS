@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Customer, Sale, CartItem, Product, Transaction, CashDrawerSession } from '../types';
+import { Customer, Sale, CartItem, Product, Transaction, CashDrawerSession, Permission } from '../types';
 import { TICKET_TYPES, ADD_ONS, MEMBERSHIP_TYPES } from '../constants';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
@@ -24,6 +24,7 @@ interface PointOfSaleProps {
   activeCashDrawerSession: CashDrawerSession | undefined;
   currentUser: User;
   onMakeDeposit: () => void;
+  hasPermission: (permission: Permission) => boolean;
 }
 
 const ProductCard: React.FC<{ product: Product; onClick: () => void; disabled: boolean }> = ({ product, onClick, disabled }) => (
@@ -39,7 +40,7 @@ const ProductCard: React.FC<{ product: Product; onClick: () => void; disabled: b
 );
 
 
-const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, activeCashDrawerSession, currentUser, onMakeDeposit }) => {
+const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, activeCashDrawerSession, currentUser, onMakeDeposit, hasPermission }) => {
   const [customerSearch, setCustomerSearch] = useState('');
   const [searchMessage, setSearchMessage] = useState<{type: 'error' | 'info', text: string} | null>(null);
   
@@ -62,6 +63,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
   
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'payment' | 'complete'>('cart');
   const [lastCompletedSale, setLastCompletedSale] = useState<Sale | null>(null);
+  const [completedTransaction, setCompletedTransaction] = useState<Transaction | null>(null);
   
   const [recipientEmail, setRecipientEmail] = useState('');
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
@@ -80,8 +82,12 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
   
 
   const activeTransaction = useMemo(() => {
+    // If we just completed a sale, use that object for display purposes.
+    if (completedTransaction && completedTransaction.id === activeTransactionId) {
+        return completedTransaction;
+    }
     return transactions.find(t => t.id === activeTransactionId) || null;
-  }, [transactions, activeTransactionId]);
+  }, [transactions, activeTransactionId, completedTransaction]);
 
   const activeGuestsInCart = useMemo(() => {
     if (!activeTransaction) return [];
@@ -99,7 +105,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
   }, [activeTransaction]);
 
   useEffect(() => {
-    if (activeTransaction && activeTransaction.guests.length > 0) {
+    if (activeTransaction && activeTransaction.guests.length > 0 && checkoutStep === 'cart') {
       setSuggestionLoading(true);
       setAiSuggestion(''); // Clear previous suggestion
       getTransactionSuggestion(activeTransaction, sales)
@@ -112,7 +118,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
     } else {
       setAiSuggestion('');
     }
-  }, [activeTransaction, sales]);
+  }, [activeTransaction, sales, checkoutStep]);
 
   const updateActiveTransaction = (updatedTransaction: Partial<Transaction>) => {
     if (!activeTransactionId) return;
@@ -122,8 +128,8 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
   };
 
   const handleNewSale = () => {
-    setTransactions(prev => prev.filter(t => t.id !== activeTransactionId));
     setActiveTransactionId(null);
+    setCompletedTransaction(null);
     setCashTendered('');
     setPaymentMethod('GPay');
     setCheckoutStep('cart');
@@ -137,6 +143,8 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
   const handleCustomerSearch = (term?: string) => {
     const searchTerm = (term || customerSearch).trim();
     if (!searchTerm) return;
+    
+    setCompletedTransaction(null);
     setSearchMessage(null);
     
     let groupGuests: Customer[] = [];
@@ -351,6 +359,11 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
     }
 
     addSale(newSale);
+    
+    // Keep the completed transaction for display, but remove from pending list
+    setCompletedTransaction(activeTransaction);
+    setTransactions(prev => prev.filter(t => t.id !== activeTransaction.id));
+    
     setCheckoutStep('complete');
     setLastCompletedSale(newSale);
     setRecipientEmail(primarySaleGuest.email || '');
@@ -514,6 +527,151 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
     setTriggerPrint(false);
   };
 
+  const renderRightPanelContent = () => {
+    if (!activeTransaction && checkoutStep !== 'complete') {
+        return (
+            <div className="text-center py-20 text-gray-500">
+                <p className="font-semibold">No Active Transaction</p>
+                <p className="text-sm mt-2">Search for a customer or group to begin a new sale.</p>
+            </div>
+        );
+    }
+    return (
+        <>
+            {/* Customer & AI Cards */}
+             {checkoutStep === 'cart' && activeTransaction && (
+                <>
+                    <div className="p-3 bg-white rounded-lg border border-gray-200 shadow-sm">
+                        <h3 className="text-sm font-semibold text-gray-600 mb-2">Customer Details</h3>
+                        <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                                <span className="font-medium text-gray-500">Name:</span>
+                                <span className="font-bold text-gray-800">{primaryGuest?.name}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="font-medium text-gray-500">Last Visit:</span>
+                                <span className="text-gray-700">{lastVisit}</span>
+                            </div>
+                            {otherGuests.length > 0 && (
+                                <div>
+                                    <span className="font-medium text-gray-500">Other Guests ({otherGuests.length}):</span>
+                                    <span className="text-gray-700 ml-2 text-right block truncate">{otherGuests.map(g => g.name).join(', ')}</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <div className="p-3 bg-blue-50 border-l-4 border-blue-400 rounded-r-lg">
+                        <h4 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="http://www.w3.org/2000/svg" fill="currentColor"><path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.657a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.657 15.657a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM4 10a1 1 0 01-1 1H2a1 1 0 110-2h1a1 1 0 011 1zM15 12a4 4 0 01-8 0c0-1.682.906-3.143 2.197-3.812a.5.5 0 01.403.906A3.001 3.001 0 007 12c0 1.654 1.346 3 3 3s3-1.346 3-3c0-.38-.07-.746-.201-1.094a.5.5 0 01.906-.403A3.999 3.999 0 0115 12z" /></svg>
+                            AI Assistant
+                        </h4>
+                        <div className="text-sm text-blue-700 min-h-[40px]">{isSuggestionLoading ? <Spinner /> : <p>{aiSuggestion || 'No suggestions.'}</p>}</div>
+                    </div>
+                </>
+            )}
+
+            {/* --- Accordion Steps --- */}
+            <div className="space-y-2">
+                {/* Step 1: Order */}
+                <div className="bg-white rounded-lg border">
+                     <div className="p-3 flex justify-between items-center cursor-pointer" onClick={() => checkoutStep !== 'complete' && setCheckoutStep('cart')}>
+                        <div>
+                            <h4 className="font-semibold text-gray-800">Step 1: Review Order</h4>
+                            {checkoutStep !== 'cart' && primaryGuest && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {primaryGuest.name}
+                                    {jumperCount > 0 && ` (${jumperCount} jumper${jumperCount > 1 ? 's' : ''})`}
+                                </p>
+                            )}
+                        </div>
+                        {checkoutStep !== 'cart' && <span className="text-green-500 font-bold">✓</span>}
+                    </div>
+                    {checkoutStep === 'cart' && activeTransaction && (
+                        <div className="p-3 border-t space-y-3">
+                            {groupedCart.map(({ item, quantity, itemsWithIndices }) => (
+                                <div key={`${item.id}-${item.type}`} className="p-2 bg-gray-50 rounded-lg">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex-1">
+                                            <p className="font-semibold text-gray-800 text-sm">{item.name}</p>
+                                            <p className="text-xs text-gray-500">₹{item.price.toLocaleString()}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => handleRemoveOneFromCart(item.id)} className="w-6 h-6 rounded-full bg-gray-200 text-gray-700">-</button>
+                                            <span className="font-bold w-6 text-center text-sm">{quantity}</span>
+                                            <button onClick={() => handleAddOneToCart(item.id)} className="w-6 h-6 rounded-full bg-gray-200 text-gray-700">+</button>
+                                        </div>
+                                    </div>
+                                    {(item.type === 'ticket' || item.type === 'membership') && (
+                                        <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                            {itemsWithIndices.map(({ item: singleItem, index }) => (
+                                                <div key={index}>
+                                                    {singleItem.assignedGuestName ? <span className="px-2 py-0.5 bg-green-100 text-green-800 rounded-full">Assigned: {singleItem.assignedGuestName}</span> : <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full">Not Assigned</span>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                            <button onClick={() => setAssignWaiverModalOpen(true)} className="w-full text-center text-blue-600 font-semibold hover:underline py-2 text-sm">Assign/Edit Jumpers</button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Step 2: Payment */}
+                {checkoutStep !== 'cart' && (
+                    <div className="bg-white rounded-lg border">
+                        <div className="p-3 flex justify-between items-center cursor-pointer" onClick={() => checkoutStep !== 'complete' && setCheckoutStep('payment')}>
+                            <h4 className="font-semibold text-gray-800">Step 2: Make Payment</h4>
+                            {checkoutStep === 'complete' && <span className="text-green-500 font-bold">✓</span>}
+                        </div>
+                        {checkoutStep === 'payment' && (
+                            <div className="p-3 border-t">
+                                <p className="text-sm font-medium text-gray-700 mb-2">Select Payment Method</p>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {(['GPay', 'PhonePe', 'Paytm', 'Card', 'Cash'] as const).map(method => (
+                                        <button key={method} onClick={() => setPaymentMethod(method)} className={`p-2 rounded-md text-sm font-semibold border-2 transition-colors ${paymentMethod === method ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-100 border-gray-300'}`}>
+                                            {method}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Step 3: Complete */}
+                {checkoutStep === 'complete' && (
+                     <div className="bg-white rounded-lg border p-4 text-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-green-500 mx-auto" viewBox="http://www.w3.org/2000/svg" fill="currentColor">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        <h3 className="text-lg font-bold text-gray-800 mt-2">Sale Complete!</h3>
+                        <p className="text-sm text-gray-500">Receipt is printing...</p>
+                        <div className="mt-4 space-y-3 text-left">
+                            <div>
+                                <label htmlFor="email-receipt" className="text-xs font-semibold text-gray-600">SEND EMAIL RECEIPT</label>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <Input label="" id="email-receipt" type="email" value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} placeholder="Customer's email" disabled={emailStatus === 'sending' || emailStatus === 'sent'} />
+                                    <Button onClick={handleSendEmail} disabled={emailStatus === 'sending' || emailStatus === 'sent'} className="w-24">{emailStatus === 'sending' ? <Spinner /> : (emailStatus === 'sent' ? 'Sent' : 'Send')}</Button>
+                                </div>
+                                {emailStatus === 'error' && <p className="text-red-500 text-xs mt-1">Failed to send.</p>}
+                            </div>
+                             <div>
+                                <label htmlFor="sms-receipt" className="text-xs font-semibold text-gray-600">SEND SMS RECEIPT</label>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <Input label="" id="sms-receipt" type="tel" value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} placeholder="Customer's phone" disabled={smsStatus === 'sending' || smsStatus === 'sent'} />
+                                    <Button onClick={handleSendSms} disabled={smsStatus === 'sending' || smsStatus === 'sent'} className="w-24">{smsStatus === 'sending' ? <Spinner /> : (smsStatus === 'sent' ? 'Sent' : 'Send')}</Button>
+                                </div>
+                                {smsStatus === 'error' && <p className="text-red-500 text-xs mt-1">Failed to send.</p>}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-white">
       <div className="flex-1 flex flex-col">
@@ -535,7 +693,7 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
               >
                 Pending Orders ({transactions.filter(t => t.id !== activeTransactionId).length})
             </Button>
-            {['admin', 'manager'].includes(currentUser.role) && activeCashDrawerSession && (
+            {hasPermission('feature:cashdrawer:make_deposit') && activeCashDrawerSession && (
                 <Button size="sm" variant="secondary" className="!bg-yellow-500 hover:!bg-yellow-600 !text-white" onClick={onMakeDeposit}>
                     Make Deposit
                 </Button>
@@ -602,150 +760,12 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
         </div>
 
         <div className="flex-1 p-4 overflow-y-auto space-y-4">
-            {!activeTransaction ? (
-                <div className="text-center py-20 text-gray-500">
-                    <p className="font-semibold">No Active Transaction</p>
-                    <p className="text-sm mt-2">Search for a customer or group to begin a new sale.</p>
-                </div>
-            ) : (
-                <>
-                    {/* Customer & AI Cards */}
-                     {checkoutStep === 'cart' && (
-                        <>
-                            <div className="p-3 bg-white rounded-lg border border-gray-200 shadow-sm">
-                                <h3 className="text-sm font-semibold text-gray-600 mb-2">Customer Details</h3>
-                                <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between">
-                                        <span className="font-medium text-gray-500">Name:</span>
-                                        <span className="font-bold text-gray-800">{primaryGuest?.name}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="font-medium text-gray-500">Last Visit:</span>
-                                        <span className="text-gray-700">{lastVisit}</span>
-                                    </div>
-                                    {otherGuests.length > 0 && (
-                                        <div>
-                                            <span className="font-medium text-gray-500">Other Guests ({otherGuests.length}):</span>
-                                            <span className="text-gray-700 ml-2 text-right block truncate">{otherGuests.map(g => g.name).join(', ')}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="p-3 bg-blue-50 border-l-4 border-blue-400 rounded-r-lg">
-                                <h4 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.657a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.657 15.657a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM4 10a1 1 0 01-1 1H2a1 1 0 110-2h1a1 1 0 011 1zM15 12a4 4 0 01-8 0c0-1.682.906-3.143 2.197-3.812a.5.5 0 01.403.906A3.001 3.001 0 007 12c0 1.654 1.346 3 3 3s3-1.346 3-3c0-.38-.07-.746-.201-1.094a.5.5 0 01.906-.403A3.999 3.999 0 0115 12z" /></svg>
-                                    AI Assistant
-                                </h4>
-                                <div className="text-sm text-blue-700 min-h-[40px]">{isSuggestionLoading ? <Spinner /> : <p>{aiSuggestion || 'No suggestions.'}</p>}</div>
-                            </div>
-                        </>
-                    )}
-
-                    {/* --- Accordion Steps --- */}
-                    <div className="space-y-2">
-                        {/* Step 1: Order */}
-                        <div className="bg-white rounded-lg border">
-                             <div className="p-3 flex justify-between items-center cursor-pointer" onClick={() => checkoutStep !== 'complete' && setCheckoutStep('cart')}>
-                                <div>
-                                    <h4 className="font-semibold text-gray-800">Step 1: Review Order</h4>
-                                    {checkoutStep !== 'cart' && primaryGuest && (
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            {primaryGuest.name}
-                                            {jumperCount > 0 && ` (${jumperCount} jumper${jumperCount > 1 ? 's' : ''})`}
-                                        </p>
-                                    )}
-                                </div>
-                                {checkoutStep !== 'cart' && <span className="text-green-500 font-bold">✓</span>}
-                            </div>
-                            {checkoutStep === 'cart' && (
-                                <div className="p-3 border-t space-y-3">
-                                    {groupedCart.map(({ item, quantity, itemsWithIndices }) => (
-                                        <div key={`${item.id}-${item.type}`} className="p-2 bg-gray-50 rounded-lg">
-                                            <div className="flex justify-between items-start">
-                                                <div className="flex-1">
-                                                    <p className="font-semibold text-gray-800 text-sm">{item.name}</p>
-                                                    <p className="text-xs text-gray-500">₹{item.price.toLocaleString()}</p>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <button onClick={() => handleRemoveOneFromCart(item.id)} className="w-6 h-6 rounded-full bg-gray-200 text-gray-700">-</button>
-                                                    <span className="font-bold w-6 text-center text-sm">{quantity}</span>
-                                                    <button onClick={() => handleAddOneToCart(item.id)} className="w-6 h-6 rounded-full bg-gray-200 text-gray-700">+</button>
-                                                </div>
-                                            </div>
-                                            {(item.type === 'ticket' || item.type === 'membership') && (
-                                                <div className="mt-2 text-xs text-gray-500 space-y-1">
-                                                    {itemsWithIndices.map(({ item: singleItem, index }) => (
-                                                        <div key={index}>
-                                                            {singleItem.assignedGuestName ? <span className="px-2 py-0.5 bg-green-100 text-green-800 rounded-full">Assigned: {singleItem.assignedGuestName}</span> : <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full">Not Assigned</span>}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                    <button onClick={() => setAssignWaiverModalOpen(true)} className="w-full text-center text-blue-600 font-semibold hover:underline py-2 text-sm">Assign/Edit Jumpers</button>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Step 2: Payment */}
-                        {checkoutStep !== 'cart' && (
-                            <div className="bg-white rounded-lg border">
-                                <div className="p-3 flex justify-between items-center cursor-pointer" onClick={() => checkoutStep !== 'complete' && setCheckoutStep('payment')}>
-                                    <h4 className="font-semibold text-gray-800">Step 2: Make Payment</h4>
-                                    {checkoutStep === 'complete' && <span className="text-green-500 font-bold">✓</span>}
-                                </div>
-                                {checkoutStep === 'payment' && (
-                                    <div className="p-3 border-t">
-                                        <p className="text-sm font-medium text-gray-700 mb-2">Select Payment Method</p>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            {(['GPay', 'PhonePe', 'Paytm', 'Card', 'Cash'] as const).map(method => (
-                                                <button key={method} onClick={() => setPaymentMethod(method)} className={`p-2 rounded-md text-sm font-semibold border-2 transition-colors ${paymentMethod === method ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-100 border-gray-300'}`}>
-                                                    {method}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Step 3: Complete */}
-                        {checkoutStep === 'complete' && (
-                             <div className="bg-white rounded-lg border p-4 text-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-green-500 mx-auto" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                </svg>
-                                <h3 className="text-lg font-bold text-gray-800 mt-2">Sale Complete!</h3>
-                                <p className="text-sm text-gray-500">Receipt is printing...</p>
-                                <div className="mt-4 space-y-3 text-left">
-                                    <div>
-                                        <label htmlFor="email-receipt" className="text-xs font-semibold text-gray-600">SEND EMAIL RECEIPT</label>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <Input label="" id="email-receipt" type="email" value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} placeholder="Customer's email" disabled={emailStatus === 'sending' || emailStatus === 'sent'} />
-                                            <Button onClick={handleSendEmail} disabled={emailStatus === 'sending' || emailStatus === 'sent'} className="w-24">{emailStatus === 'sending' ? <Spinner /> : (emailStatus === 'sent' ? 'Sent' : 'Send')}</Button>
-                                        </div>
-                                        {emailStatus === 'error' && <p className="text-red-500 text-xs mt-1">Failed to send.</p>}
-                                    </div>
-                                     <div>
-                                        <label htmlFor="sms-receipt" className="text-xs font-semibold text-gray-600">SEND SMS RECEIPT</label>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <Input label="" id="sms-receipt" type="tel" value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} placeholder="Customer's phone" disabled={smsStatus === 'sending' || smsStatus === 'sent'} />
-                                            <Button onClick={handleSendSms} disabled={smsStatus === 'sending' || smsStatus === 'sent'} className="w-24">{smsStatus === 'sending' ? <Spinner /> : (smsStatus === 'sent' ? 'Sent' : 'Send')}</Button>
-                                        </div>
-                                        {smsStatus === 'error' && <p className="text-red-500 text-xs mt-1">Failed to send.</p>}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </>
-            )}
+            {renderRightPanelContent()}
         </div>
         
         {/* Footer with totals and checkout */}
         <div className="p-4 border-t bg-white">
-          {activeTransaction && (
+          {(activeTransaction || checkoutStep === 'complete') && (
              <>
                 {checkoutStep === 'cart' && (
                     <div className="space-y-2">
@@ -755,13 +775,13 @@ const PointOfSale: React.FC<PointOfSaleProps> = ({ sales, customers, addSale, ac
                                 <span>Discount</span>
                                 {discountAmount > 0 ? (
                                     <div className="flex items-center gap-2"><span>- ₹{discountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span><button onClick={handleRemoveDiscount} className="text-red-500"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="http://www.w3.org/2000/svg" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg></button></div>
-                                ) : (<Button size="sm" variant="secondary" onClick={() => setIsApplyingDiscount(true)}>Apply Discount</Button>)}
+                                ) : ( hasPermission('feature:sale:apply_discount') && <Button size="sm" variant="secondary" onClick={() => setIsApplyingDiscount(true)}>Apply Discount</Button>)}
                             </div>
                             <div className="flex justify-between"><span>GST (18%)</span><span>₹{gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
                         </div>
                         <hr/>
                         <div className="flex justify-between font-bold text-lg text-gray-800"><span>Grand Total</span><span>₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
-                        {!canCheckout && activeTransaction.cart.length > 0 && <div className="text-xs text-red-600 bg-red-50 p-2 rounded-md">All jump tickets/memberships must be assigned to a guest with a valid waiver.</div>}
+                        {activeTransaction && !canCheckout && activeTransaction.cart.length > 0 && <div className="text-xs text-red-600 bg-red-50 p-2 rounded-md">All jump tickets/memberships must be assigned to a guest with a valid waiver.</div>}
                         <Button size="lg" variant="primary" className="w-full" onClick={() => setCheckoutStep('payment')} disabled={!canCheckout}>Proceed to Payment</Button>
                     </div>
                 )}

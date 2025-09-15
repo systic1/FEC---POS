@@ -10,9 +10,10 @@ interface StaffManagementProps {
   addUser: (user: User) => void;
   deleteUser: (code: string) => void;
   updateUser: (originalCode: string, updatedUser: User) => void;
+  availableRoles: string[];
 }
 
-const StaffManagement: React.FC<StaffManagementProps> = ({ users, addUser, deleteUser, updateUser }) => {
+const StaffManagement: React.FC<StaffManagementProps> = ({ users, addUser, deleteUser, updateUser, availableRoles }) => {
   const [newUser, setNewUser] = useState({ name: '', role: 'staff' as Role, code: '' });
   const [error, setError] = useState('');
   
@@ -103,10 +104,10 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ users, addUser, delet
     }
   };
 
-  return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-3xl font-bold text-gray-800">Staff Management</h1>
+  const rolesForDropdown = availableRoles.filter(r => r !== 'admin');
 
+  return (
+    <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Add User Form */}
         <Card className="lg:col-span-1">
@@ -129,8 +130,9 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ users, addUser, delet
                 onChange={handleInputChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               >
-                <option value="staff">Staff</option>
-                <option value="manager">Manager</option>
+                {rolesForDropdown.map(role => (
+                    <option key={role} value={role} className="capitalize">{role}</option>
+                ))}
               </select>
             </div>
             <Input
@@ -213,8 +215,9 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ users, addUser, delet
                         onChange={handleEditInputChange}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     >
-                        <option value="staff">Staff</option>
-                        <option value="manager">Manager</option>
+                       {rolesForDropdown.map(role => (
+                          <option key={role} value={role} className="capitalize">{role}</option>
+                       ))}
                     </select>
                 </div>
                 <Input
